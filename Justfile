@@ -1,0 +1,88 @@
+# Justfile — project tasks (cookiecutter-aware)
+#
+# Default shell on Unix; PowerShell on Windows (rm is aliased to Remove-Item)
+set shell := ["bash", "-cu"]
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
+# Run `just` with no arguments to show menu
+default: help
+
+# ---------------------------------------
+# Setup
+# ---------------------------------------
+
+# Install the virtual environment and install the pre-commit hooks
+install:
+    @echo "🚀 Creating virtual environment using uv"
+    @uv sync
+    @uv run pre-commit install
+
+# ---------------------------------------
+# Quality
+# ---------------------------------------
+
+# Run code quality tools
+check:
+    @echo "🚀 Checking lock file consistency with 'pyproject.toml'"
+    @uv lock --locked
+    @echo "🚀 Linting code: Running pre-commit"
+    @uv run pre-commit run -a
+    @echo "🚀 Static type checking: Running mypy"
+    @uv run mypy
+    @echo "🚀 Checking for obsolete dependencies: Running deptry"
+    @uv run deptry .
+
+# ---------------------------------------
+# Tests
+# ---------------------------------------
+
+# Test the code with pytest
+test:
+    @echo "🚀 Testing code: Running pytest"
+    @uv run python -m pytest --cov --cov-config=pyproject.toml --cov-report=xml
+
+# ---------------------------------------
+# Build & Clean
+# ---------------------------------------
+
+# Build wheel file
+build: clean-build
+    @echo "🚀 Creating wheel file"
+    @uvx --from build pyproject-build --installer uv
+
+# Clean build artifacts
+clean-build:
+    @echo "🚀 Removing build artifacts"
+    @rm -rf dist || true
+
+# ---------------------------------------
+# Publish
+# ---------------------------------------
+
+# Publish a release to PyPI
+publish:
+    @echo "🚀 Publishing."
+    @uvx twine upload --repository-url https://upload.pypi.org/legacy/ dist/*
+
+# Build and publish
+build-and-publish: build publish
+
+# ---------------------------------------
+# Docs
+# ---------------------------------------
+
+# Test if documentation can be built without warnings or errors
+docs-test:
+    @uv run mkdocs build -s
+
+# Build and serve the documentation
+docs:
+    @uv run mkdocs serve
+
+# ---------------------------------------
+# Help / menu
+# ---------------------------------------
+
+# List all tasks and their descriptions
+help:
+    @just --list
