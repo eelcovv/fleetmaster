@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 import capytaine as cpt
+import h5py
 import numpy as np
 import numpy.typing as npt
 from capytaine.io.xarray import export_dataset
@@ -50,28 +51,23 @@ def make_database(
     return cpt.assemble_dataset(results)
 
 
-def run_simulation_batch(settings: SimulationSettings, recalculate_if_exists: bool = True) -> None:
+def run_simulation_batch(settings: SimulationSettings) -> None:
     """
-    Runs a batch of Capytaine simulations based on the given settings.
+    Runs a batch of Capytaine simulations and saves all results to a single HDF5 file.
+    Optionally, also exports results to individual NetCDF files.
 
     Args:
         settings: A SimulationSettings object with all necessary parameters.
-        recalculate_if_exists: If True, re-run and overwrite existing results.
     """
     logger.info("Starting simulation batch...")
 
+    output_file = Path(settings.output_hdf5_file)
+    if output_file.exists():
+        logger.warning(f"Output file {output_file} already exists and will be overwritten.")
+        output_file.unlink()
+
     for stl_file in settings.stl_files:
         logger.info(f"Processing STL file: {stl_file}")
-
-        file_base_name = Path(stl_file).stem
-
-        output_dir = Path(settings.output_directory) if settings.output_directory else Path(stl_file).parent
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        nc_file = output_dir / f"{file_base_name}.nc"
-        tec_dir = output_dir / f"{file_base_name}_tecplot"
-        tec_dir.mkdir(exist_ok=True)
 
         wave_frequencies = 2 * np.pi / np.array(settings.wave_periods)
 
@@ -97,30 +93,50 @@ def run_simulation_batch(settings: SimulationSettings, recalculate_if_exists: bo
         lid_mesh = hull_mesh.generate_lid(z=-0.01) if lid else None
 
         if grid_symmetry:
-            hull_mesh = cpt.ReflectionSymmetricMesh(hull_mesh, plane=cpt.xOz_Plane, name=f"{file_base_name}_mesh")
+            hull_mesh = cpt.ReflectionSymmetricMesh(hull_mesh, plane=cpt.xOz_Plane, name=f"{Path(stl_file).stem}_mesh")
 
         boat = cpt.FloatingBody(mesh=hull_mesh, lid_mesh=lid_mesh)
         boat.add_all_rigid_body_dofs()
         boat.keep_immersed_part()
 
-        if not nc_file.exists() or recalculate_if_exists:
-            logger.info("Starting BEM calculations...")
-            database = make_database(
-                body=boat,
-                omegas=wave_frequencies,
-                wave_directions=wave_directions,
-                water_level=water_level,
-                water_depth=water_depth,
-            )
+        logger.info("Starting BEM calculations...")
+        database = make_database(
+            body=boat,
+            omegas=wave_frequencies,
+            wave_directions=wave_directions,
+            water_level=water_level,
+            water_depth=water_depth,
+        )
+
+        group_name = Path(stl_file).stem
+
+        # --- HDF5 output (always) ---
+        logger.info(f"Writing results to group '{group_name}' in HDF5 file: {output_file}")
+        database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
+        with h5py.File(output_file, "a") as f:
+            group = f[group_name]
+            with open(stl_file, "rb") as stl_f:
+                stl_data = stl_f.read()
+            group.create_dataset("stl_content", data=np.void(stl_data))
+        logger.debug(f"Successfully wrote results for {stl_file} to HDF5.")
+
+        # --- Legacy NetCDF/Tecplot output (optional) ---
+        if settings.export_to_netcdf:
+            logger.info("Exporting to individual NetCDF and Tecplot files as requested.")
+
+            output_dir = Path(settings.output_directory) if settings.output_directory else Path(stl_file).parent
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            nc_file = output_dir / f"{group_name}.nc"
+            tec_dir = output_dir / f"{group_name}_tecplot"
+            tec_dir.mkdir(exist_ok=True)
 
             logger.info(f"Writing result as NetCDF file: {nc_file}")
-            export_dataset(str(nc_file), database, format="netcdf")
+            database.to_netcdf(nc_file)
             logger.debug("Success")
 
             logger.info(f"Writing result to Tecplot directory: {tec_dir}")
             export_dataset(str(tec_dir), database, format="nemoh")
             logger.debug("Success")
-        else:
-            logger.info(f"Loading existing results from {nc_file}. Use --recalculate to force recalculation.")
 
-    logger.info("✅ Simulation batch finished.")
+    logger.info(f"✅ Simulation batch finished. Results saved to {output_file}")

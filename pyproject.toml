@@ -30,6 +30,8 @@ dependencies = [
     "pyyaml>=6.0.3",
     "rich>=14.2.0",
     "vtk>=9.5.2",
+    "h5py",
+    "h5netcdf",
 ]
 
 [project.optional-dependencies]
