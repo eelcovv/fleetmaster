@@ -1,7 +1,8 @@
 import glob
 import logging
 import types
-from typing import Any, Callable, TypeVar, Union, get_args, get_origin
+from collections.abc import Callable
+from typing import Any, TypeVar, Union, get_args, get_origin
 
 import click
 import yaml
@@ -28,7 +29,7 @@ def _expand_stl_files(stl_files: tuple[str, ...]) -> list[str]:
     expanded_files = [path for pattern in stl_files for path in glob.glob(pattern)]
 
     if not expanded_files:
-        err_msg = f"No files found matching the provided STL patterns: {', '.join(stl_files)}"
+        err_msg = f"No files found matching the provided STL patterns: {", ".join(stl_files)}"
         raise click.UsageError(err_msg)
     return expanded_files
 
@@ -92,7 +93,7 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
             if name == "stl_files":
                 continue
 
-            option_name = f"--{name.replace('_', '-')}"
+            option_name = f"--{name.replace("_", "-")}"
             option_type = field.annotation
 
             # Handle Union types (e.g., int | None)
