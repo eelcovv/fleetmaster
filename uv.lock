@@ -269,8 +269,8 @@ gui = [
 requires-dist = [
     { name = "capytaine", specifier = ">=2.3.1" },
     { name = "click", specifier = ">=8.1.8" },
-    { name = "h5netcdf" },
-    { name = "h5py" },
+    { name = "h5netcdf", specifier = ">=1.7.0" },
+    { name = "h5py", specifier = ">=3.15.0" },
     { name = "numpy", specifier = ">=2.0.2" },
     { name = "pydantic", specifier = ">=2.12.2" },
     { name = "pyside6-essentials", marker = "extra == 'gui'", specifier = ">=6.10.0" },
