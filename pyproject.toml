@@ -111,7 +111,7 @@ module = [
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-path = "src/fleetmaster/gui/*"
+path = "src/fleetmaster/gui/*.py"
 disallow_any_unimported = false
 
 [tool.pytest.ini_options]
