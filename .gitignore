@@ -143,4 +143,4 @@ cython_debug/
 .envrc
 *.tec
 *.nc
-*.hd5
+*.hdf5

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 import capytaine as cpt
-import h5py  # type: ignore[import-untyped]
+import h5py
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -62,7 +62,13 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
     """
     logger.info("Starting simulation batch...")
 
-    output_file = Path(settings.output_hdf5_file)
+    output_dir = Path(settings.output_directory) if settings.output_directory else None
+
+    output_dir = Path(settings.stl_files[0]).parent if output_dir is None else output_dir
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_file = output_dir / settings.output_hdf5_file
     if output_file.exists():
         logger.warning(f"Output file {output_file} already exists and will be overwritten.")
         output_file.unlink()
@@ -129,14 +135,11 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
                 stl_data = stl_f.read()
             logger.debug("Call group create")
             group.create_dataset("stl_content", data=np.void(stl_data))
-        logger.debug(f"Successfully wrote results for {stl_file} to HDF5.")
+        logger.debug(f"Successfully wrote results for {stl_file} to HDF5 {output_file}.")
 
         # --- Legacy NetCDF/Tecplot output (optional) ---
         if settings.export_to_netcdf:
             logger.info("Exporting to individual NetCDF and Tecplot files as requested.")
-
-            output_dir = Path(settings.output_directory) if settings.output_directory else Path(stl_file).parent
-            output_dir.mkdir(parents=True, exist_ok=True)
 
             nc_file = output_dir / f"{group_name}.nc"
             tec_dir = output_dir / f"{group_name}_tecplot"
