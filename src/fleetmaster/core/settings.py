@@ -1,3 +1,4 @@
+import numpy as np
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -10,7 +11,7 @@ class SimulationSettings(BaseModel):
     forward_speed: float | list[float] = 0.0
     lid: bool = True
     grid_symmetry: bool = False
-    water_depth: float | list[float] = 0.0
+    water_depth: float | list[float] = np.inf
     water_level: float | list[float] = 0.0
 
     @field_validator("forward_speed")
