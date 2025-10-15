@@ -1,8 +1,10 @@
 import logging
 from pathlib import Path
+from typing import Any
 
 import capytaine as cpt
 import numpy as np
+import numpy.typing as npt
 from capytaine.io.xarray import export_dataset, save_dataset_as_netcdf
 
 from .exceptions import SimulationConfigurationError
@@ -11,10 +13,16 @@ from .settings import SimulationSettings
 logger = logging.getLogger(__name__)
 
 
-def make_database(body, omegas, wave_directions, water_depth, water_level):
+def make_database(
+    body: Any,
+    omegas: npt.NDArray[np.float64],
+    wave_directions: npt.NDArray[np.float64],
+    water_depth: float,
+    water_level: float,
+) -> Any:
     """Create a dataset of BEM results for a given body and conditions."""
     bem_solver = cpt.BEMSolver()
-    problems = []
+    problems: list[Any] = []
     logger.debug("Collecting problems")
     for omega in omegas:
         problems.extend(
@@ -42,7 +50,7 @@ def make_database(body, omegas, wave_directions, water_depth, water_level):
     return cpt.assemble_dataset(results)
 
 
-def run_simulation_batch(settings: SimulationSettings, recalculate_if_exists: bool = True):
+def run_simulation_batch(settings: SimulationSettings, recalculate_if_exists: bool = True) -> None:
     """
     Runs a batch of Capytaine simulations based on the given settings.
 
@@ -71,8 +79,8 @@ def run_simulation_batch(settings: SimulationSettings, recalculate_if_exists: bo
     # These could be added to SimulationSettings if they need to be configurable.
     lid = True
     grid_symmetry = False
-    water_depth = 0  # 0 for deep water
-    water_level = 0
+    water_depth = 0.0  # 0 for deep water
+    water_level = 0.0
 
     if lid and grid_symmetry:
         raise SimulationConfigurationError(SimulationConfigurationError.LID_AND_SYMMETRY_ENABLED)

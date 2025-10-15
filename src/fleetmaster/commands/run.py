@@ -1,26 +1,30 @@
 import logging
 import types
-from typing import get_origin
+from typing import Any, Callable, TypeVar, get_origin
 
 import click
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from fleetmaster.core.engine import run_simulation_batch
 from fleetmaster.core.settings import SimulationSettings
 
 logger = logging.getLogger(__name__)
 
+# Define a TypeVar for decorator typing
+F = TypeVar("F", bound=Callable[..., Any])
+
 # Set logging levels for external libraries
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 logging.getLogger("capytaine").setLevel(logging.WARNING)
 
 
-def create_cli_options(model):
+def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
     """Dynamically create click options from a Pydantic model."""
 
-    def decorator(f):
-        for name, field in model.model_fields.items():
+    def decorator(f: F) -> F:
+        # Decorators are applied bottom-up, so reverse the order of fields
+        for name, field in reversed(model.model_fields.items()):
             option_name = f"--{name.replace('_', '-')}"
             option_type = field.annotation
 
@@ -49,11 +53,11 @@ def create_cli_options(model):
 @click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
 @click.option("--settings-file", type=click.Path(exists=True), help="Path to a YAML settings file.")
 @create_cli_options(SimulationSettings)
-def run(settings_file, **kwargs):
+def run(settings_file: str | None, **kwargs: Any) -> None:
     """Runs a set of capytaine simulations based on provided settings."""
 
     # 1. Load settings from YAML file if provided
-    config = {}
+    config: dict[str, Any] = {}
     if settings_file:
         with open(settings_file) as f:
             config = yaml.safe_load(f) or {}

@@ -4,7 +4,7 @@ import logging
 from logging import Logger
 
 
-def setup_general_logger(level=logging.INFO) -> Logger:
+def setup_general_logger(level: int = logging.INFO) -> Logger:
     """Initialize the central logger .
 
     Returns

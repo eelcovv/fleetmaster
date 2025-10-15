@@ -11,11 +11,11 @@ class QtLogHandler(logging.Handler, QObject):
 
     message_written = pyqtSignal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QObject | None = None) -> None:
         super().__init__()
         QObject.__init__(self, parent)
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         """Invoked by the logger; transmits the signal."""
         msg = self.format(record)
         self.message_written.emit(msg)
