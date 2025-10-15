@@ -188,6 +188,30 @@ skip_empty = true
 branch = true
 source = ["src"]
 
+# ========================================================================================
+# 🔹 DEBTRY
+# ========================================================================================
+[tool.deptry]
+# Ignore dependencies that are not directly imported into the code
+ignore = [
+    "h5netcdf",
+    "vtk",
+    "pytest",
+    "pre-commit",
+    "tox-uv",
+    "deptry",
+    "mypy",
+    "pytest-cov",
+    "ruff",
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocstrings",
+    "types-PyYAML",
+]
+
+# Ignore our own package
+per_rule_ignores = { "DEP003" = ["fleetmaster"] }
+
 
 # ========================================================================================
 # 🔹 TOX
