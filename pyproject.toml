@@ -117,6 +117,7 @@ module = [
     "capytaine",
     "capytaine.io.xarray",
     "click",
+    "h5py",
     "numpy",
     "numpy.typing",
     "PySide6.*",

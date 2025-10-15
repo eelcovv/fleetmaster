@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 import capytaine as cpt
-import h5py
+import h5py  # type: ignore[import-untyped]
 import numpy as np
 import numpy.typing as npt
 from capytaine.io.xarray import export_dataset

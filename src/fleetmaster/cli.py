@@ -75,8 +75,8 @@ def cli(verbose: int) -> None:
         log_level = LOGLEVEL_DEFAULT
 
     package_logger.setLevel(log_level)
-    for handler in package_logger.handlers:
-        handler.setLevel(log_level)
+    for h in package_logger.handlers:
+        h.setLevel(log_level)
 
     if log_level <= logging.INFO:
         logger.info(
