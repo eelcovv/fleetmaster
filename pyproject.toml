@@ -40,10 +40,10 @@ gui = [
 [dependency_groups]
 dev = [
     "pytest>=7.2.0",
-    "pre-commit>=2.20.0",
+    "pre-commit>=4.3.0",
     "tox-uv>=1.11.3",
     "deptry>=0.22.0",
-    "mypy>=1.5.1",
+    "mypy>=1.18.2",
     "pytest-cov>=4.0.0",
     "ruff>=0.9.2",
     "mkdocs>=1.4.2",
@@ -51,6 +51,7 @@ dev = [
     "mkdocstrings[python]>=0.26.1",
     "types-PyYAML>=6.0.12.12",
     "pyside6-essentials>=6.10.0",
+    "pydantic>=2.12.2",
 ]
 
 [project.urls]
@@ -109,10 +110,6 @@ module = [
     "yaml",
 ]
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-path = "src/fleetmaster/gui/*.py"
-disallow_any_unimported = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -215,6 +212,7 @@ description = "run type checker via mypy"
 dependency_groups = [
     "dev",
 ]
+deps = ["."]
 commands = [["mypy",  "{posargs:src}"]]
 
 [tool.tox.env.dev]
@@ -226,6 +224,3 @@ dependency_groups = [
 commands = [["uv", "pip", "tree"]]
 
 [dependency-groups]
-dev = [
-    "pre-commit>=4.3.0",
-]
