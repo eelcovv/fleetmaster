@@ -108,15 +108,15 @@ Please note this documentation assumes you already have `uv` and `Git` installed
 
 10. Commit your changes and push your branch to GitHub:
 
-   ```bash
-   git add .
-   git commit -m "Your detailed description of your changes."
-   git push origin name-of-your-bugfix-or-feature
-   ```
+```bash
+git add .
+git commit -m "Your detailed description of your changes."
+git push origin name-of-your-bugfix-or-feature
+```
 
 11. Submit a pull request through the GitHub website.
 
-   Done!
+Done!
 
 ## Pull Request Guidelines
 

@@ -14,7 +14,6 @@ Commands:
 import logging
 
 import click
-from rich.logging import RichHandler
 
 from . import __version__
 from .commands import run

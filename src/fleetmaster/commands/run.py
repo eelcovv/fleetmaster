@@ -1,4 +1,5 @@
 import logging
+
 import click
 import yaml
 from pydantic import ValidationError
@@ -12,37 +13,41 @@ logger = logging.getLogger(__name__)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 logging.getLogger("capytaine").setLevel(logging.WARNING)
 
+
 def create_cli_options(model):
     """Dynamically create click options from a Pydantic model."""
+
     def decorator(f):
         for name, field in model.model_fields.items():
             option_name = f"--{name.replace('_', '-')}"
             option_type = field.annotation
-            
+
             # Handle List types in Click
-            if hasattr(option_type, '__origin__') and option_type.__origin__ in (list, list):
+            if hasattr(option_type, "__origin__") and option_type.__origin__ in (list, list):
                 option_type = str  # Treat list inputs as comma-separated strings
-            
+
             f = click.option(
                 option_name,
                 type=option_type,
-                default=None, # Default to None to distinguish between not set and set to a default value
+                default=None,  # Default to None to distinguish between not set and set to a default value
                 help=field.description or f"Set the {name}.",
-                multiple=True if hasattr(field.annotation, '__origin__') and field.annotation.__origin__ in (list, list) else False,
+                multiple=bool(hasattr(option_type, "__origin__") and option_type.__origin__ in (list, list)),
             )(f)
         return f
+
     return decorator
 
-@click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
+
+@click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
 @click.option("--settings-file", type=click.Path(exists=True), help="Path to a YAML settings file.")
 @create_cli_options(SimulationSettings)
 def run(settings_file, **kwargs):
     """Runs a set of capytaine simulations based on provided settings."""
-    
+
     # 1. Load settings from YAML file if provided
     config = {}
     if settings_file:
-        with open(settings_file, "r") as f:
+        with open(settings_file) as f:
             config = yaml.safe_load(f) or {}
 
     # 2. Override with CLI options
@@ -56,8 +61,7 @@ def run(settings_file, **kwargs):
             try:
                 cli_args[key] = [float(i) for i in value]
             except (ValueError, TypeError):
-                cli_sargs[key] = list(value)
-
+                cli_args[key] = list(value)
 
     config.update(cli_args)
 
