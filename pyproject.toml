@@ -69,6 +69,7 @@ dev = [
     "mkdocstrings[python]>=0.26.1",
     "types-PyYAML>=6.0.12.12",
     "pyside6-essentials>=6.10.0",
+    "pandas-stubs>=2.3.2.250926",
 ]
 
 [project.urls]
@@ -116,14 +117,14 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = [
-    "capytaine",
-    "capytaine.io.xarray",
+    "capytaine.*",
     "click",
-    "h5py",
-    "numpy",
-    "numpy.typing",
+    "h5py.*",
+    "numpy.*",
+    "pandas",
     "PySide6.*",
-    "rich.logging",
+    "rich.*",
+    "trimesh.*",
     "vtk",
     "yaml",
 ]
