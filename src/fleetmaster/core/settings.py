@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 class SimulationSettings(BaseModel):
     """Defines all possible settings for a simulation."""
 
-    stl_file: str = Field(description="Path to the STL mesh file.")
+    stl_files: list[str] = Field(description="Path to the STL mesh files.")
     wave_periods: list[float] = Field(default=[5, 10, 15, 20])
     wave_directions: list[float] = Field(default=[0, 45, 90, 135, 180])
     forward_speed: float | list[float] = 0.0
