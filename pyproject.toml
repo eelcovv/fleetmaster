@@ -25,6 +25,7 @@ classifiers = [
 dependencies = [
     "capytaine>=2.3.1",
     "click>=8.1.8",
+    "numpy>=2.0.2",
     "pydantic>=2.12.2",
     "rich>=14.2.0",
 ]

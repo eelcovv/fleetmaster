@@ -472,6 +472,9 @@ dependencies = [
     { name = "capytaine" },
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "click", version = "8.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pydantic" },
     { name = "rich" },
 ]
@@ -495,6 +498,7 @@ dev = [
 requires-dist = [
     { name = "capytaine", specifier = ">=2.3.1" },
     { name = "click", specifier = ">=8.1.8" },
+    { name = "numpy", specifier = ">=2.0.2" },
     { name = "pydantic", specifier = ">=2.12.2" },
     { name = "rich", specifier = ">=14.2.0" },
 ]
