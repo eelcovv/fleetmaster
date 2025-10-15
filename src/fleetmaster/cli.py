@@ -23,7 +23,11 @@ from .logging_setup import setup_general_logger
 logger = setup_general_logger()
 
 
-@click.group(help="Register CLI tools for fleetmaster.", invoke_without_command=True)
+@click.group(
+    context_settings={"ignore_unknown_options": False},
+    help="Register CLI tools for fleetmaster.",
+    invoke_without_command=True,
+)
 @click.version_option(
     __version__,
     "--version",

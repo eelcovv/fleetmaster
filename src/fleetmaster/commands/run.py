@@ -118,7 +118,7 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
     return decorator
 
 
-@click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+@click.command(context_settings={"ignore_unknown_options": False})
 @click.argument("stl_files", required=False, nargs=-1)
 @click.option("--settings-file", type=click.Path(exists=True), help="Path to a YAML settings file.")
 @create_cli_options(SimulationSettings)
