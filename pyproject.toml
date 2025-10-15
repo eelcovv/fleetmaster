@@ -31,6 +31,7 @@ dependencies = [
     "pydantic>=2.12.2",
     "pyyaml>=6.0.3",
     "rich>=14.2.0",
+    "trimesh>=4.8.3",
     "vtk>=9.5.2",
 ]
 
