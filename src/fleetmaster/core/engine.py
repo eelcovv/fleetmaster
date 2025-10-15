@@ -6,6 +6,7 @@ import capytaine as cpt
 import h5py  # type: ignore[import-untyped]
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 from capytaine.io.xarray import export_dataset
 
 from .exceptions import SimulationConfigurationError
@@ -110,13 +111,23 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
 
         group_name = Path(stl_file).stem
 
+        # Convert the Categorial items
+        # This prevents the TypeError with the h5netcdf engine.
+        for coord_name, coord_data in database.coords.items():
+            if isinstance(coord_data.dtype, pd.CategoricalDtype):
+                logger.debug(f"Converting coordinate '{coord_name}' from Categorical to string dtype.")
+                database[coord_name] = database[coord_name].astype(str)
+
         # --- HDF5 output (always) ---
         logger.info(f"Writing results to group '{group_name}' in HDF5 file: {output_file}")
         database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
+        logger.debug(f"Opened netcdf outfile {output_file}")
         with h5py.File(output_file, "a") as f:
             group = f[group_name]
+            logger.debug(f"Writin stl file {stl_file}")
             with open(stl_file, "rb") as stl_f:
                 stl_data = stl_f.read()
+            logger.debug("Call group create")
             group.create_dataset("stl_content", data=np.void(stl_data))
         logger.debug(f"Successfully wrote results for {stl_file} to HDF5.")
 
