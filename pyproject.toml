@@ -94,18 +94,25 @@ check_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 show_error_codes = true
+plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = [
     "capytaine",
     "capytaine.io.xarray",
     "click",
+    "numpy",
+    "numpy.typing",
     "PySide6.*",
     "rich.logging",
     "vtk",
     "yaml",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+path = "src/fleetmaster/gui/*"
+disallow_any_unimported = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
