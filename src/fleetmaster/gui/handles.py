@@ -1,22 +1,24 @@
 # fleetmaster/gui/handlers.py
 import logging
 
-from PySide6 import pyqtSignal
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Signal
 
 
-class QtLogHandler(logging.Handler, QObject):
+class _LogSignalEmitter(QObject):
+    message_written = Signal(str)
+
+
+class QtLogHandler(logging.Handler):
     """
     A custom logging handler that forwards log messages via a PyQt-signal.
     """
 
-    message_written = pyqtSignal(str)
-
-    def __init__(self, parent: QObject | None = None) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        QObject.__init__(self, parent)
+        self.emitter = _LogSignalEmitter()
+        self.message_written = self.emitter.message_written
 
     def emit(self, record: logging.LogRecord) -> None:
         """Invoked by the logger; transmits the signal."""
         msg = self.format(record)
-        self.message_written.emit(msg)
+        self.emitter.message_written.emit(msg)
