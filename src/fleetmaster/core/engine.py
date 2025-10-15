@@ -1,72 +1,27 @@
 import logging
-from pathlib import Path
-
-# from pymeshup.gui.capytaine_runner import run_capytaine
-import capytaine as cpt
-import numpy as np
-from capytaine.io.xarray import export_dataset, save_dataset_as_netcdf
 
 logger = logging.getLogger(__name__)
 
-matlog = logging.getLogger("matplotlib")
-matlog.setLevel(level=logging.WARNING)
 
-caplog = logging.getLogger("capytaine")
-caplog.setLevel(level=logging.WARNING)
+def run_simulation_batch(settings: dict):
+    """
+    Runs a batch of Capytaine simulations based on the g    iven settings.
+    Args:
+        settings (dict): Een dictionary met alle benodigde parameters
+                         (stl_file, wave_periods, etc.).
+    """
+    logger.info("Starting simulation batch...")
+    stl_file = settings.get("stl_file")
+    wave_directions = settings.get("wave_directions", [0])
 
+    logger.info(f"Processing STL file: {stl_file}")
+    for direction in wave_directions:
+        logger.debug(f"Running for wave direction: {direction}")
+        # resultaat = capytaine.solve(...)
 
-def make_database(body, omegas, wave_directions, water_depth=0, water_level=0):
-    bem_solver = cpt.BEMSolver()
+    logger.info("Simulation batch finished.")
+    # return resultaten
 
-    # SOLVE BEM PROBLEMS
-    problems = []
-    logger.debug("Collecting problems")
-    for omega in omegas:
-        problems += [
-            cpt.RadiationProblem(
-                omega=omega,
-                body=body,
-                radiating_dof=dof,
-                water_depth=water_depth,
-                free_surface=water_level,
-            )
-            for dof in body.dofs
-        ]
-        for wave_direction in wave_directions:
-            problems += [
-                cpt.DiffractionProblem(
-                    omega=omega,
-                    body=body,
-                    wave_direction=wave_direction,
-                    water_depth=water_depth,
-                    free_surface=water_level,
-                )
-            ]
-    results = []
-    n_problems = len(problems)
-    for cnt, problem in enumerate(problems):
-        problem_type = type(problem).__name__
-        try:
-            problem_dof = problem.radiating_dof
-        except AttributeError:
-            problem_dof = "None"
-        problem_ome = problem.omega
-        problem_dir = problem.wave_direction
-        logger.debug(
-            f"Solving {cnt:02d}/{n_problems} : {problem_type:20s} {problem_dof:6s} {problem_ome:8.2f} {problem_dir:8.2f}"
-        )
-
-        result = bem_solver.solve(problem)
-        results.append(result)
-    # *radiation_results, diffraction_result = results
-    dataset = cpt.assemble_dataset(results)
-
-    # dataset['diffraction_result'] = diffraction_result
-
-    return dataset
-
-
-def run_simulations():
     logger.info("Welcome to capytaine!")
 
     file_base_name = "defraction_box"

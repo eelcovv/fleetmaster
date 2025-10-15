@@ -3,10 +3,8 @@
 import logging
 from logging import Logger
 
-from rich.logging import RichHandler
 
-
-def setup_general_logger() -> Logger:
+def setup_general_logger(level=logging.INFO) -> Logger:
     """Initialize the central logger .
 
     Returns
@@ -15,16 +13,10 @@ def setup_general_logger() -> Logger:
 
     """
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.WARNING)
+    logger.setLevel(level)
     logger.propagate = True  # Allow logs to propagate to parent loggers
 
-    if not any(isinstance(h, RichHandler) for h in logger.handlers):
-        console_handler = RichHandler(
-            show_time=True,
-            show_path=True,
-            rich_tracebacks=True,
-        )
-        console_handler.setLevel(logging.WARNING)
-        logger.addHandler(console_handler)
+    if logger.hasHandlers():
+        logger.handlers.clear()
 
     return logger

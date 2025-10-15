@@ -14,11 +14,11 @@ Commands:
 import logging
 
 import click
+from rich.logging import RichHandler
 
 from . import __version__
+from .commands import run
 from .logging_setup import setup_general_logger
-from .commands.run import run_simulations
-
 
 logger = setup_general_logger()
 
@@ -67,12 +67,12 @@ def cli(verbose: int) -> None:
 
     if log_level <= logging.INFO:
         logger.info(
-            "🚀 Python Build Utilities CLI — ready to build, package, and manage your Python projects.",
+            "🚀 Fleetmaster CLI — ready to start your capytaine simulations.",
         )
 
 
 # Register all subcommands
-cli.add_command(run_simulations, name="run")
+cli.add_command(run, name="run")
 
 
 if __name__ == "__main__":
