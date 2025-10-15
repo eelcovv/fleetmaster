@@ -5,18 +5,16 @@ from logging import Logger
 
 from rich.logging import RichHandler
 
-from . import LOGGER_NAME
 
-
-def initialize_logging() -> Logger:
-    """Initialize the central logger with a rich console handler.
+def setup_general_logger() -> Logger:
+    """Initialize the central logger .
 
     Returns
     -------
-        Logger: The configured logger instance with RichHandler.
+        Logger: The configured logger.
 
     """
-    logger = logging.getLogger(LOGGER_NAME)
+    logger = logging.getLogger(__name__)
     logger.setLevel(logging.WARNING)
     logger.propagate = True  # Allow logs to propagate to parent loggers
 

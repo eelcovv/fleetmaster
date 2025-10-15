@@ -17,11 +17,13 @@ import click
 
 from . import __version__
 from .logging_setup import setup_general_logger
+from .commands.run import run_simulations
+
 
 logger = setup_general_logger()
 
 
-@click.group(help="Register CLI tools for capytaine-runner.", invoke_without_command=True)
+@click.group(help="Register CLI tools for fleetmaster.", invoke_without_command=True)
 @click.version_option(
     __version__,
     "--version",
@@ -70,7 +72,8 @@ def cli(verbose: int) -> None:
 
 
 # Register all subcommands
-cli.add_command(run)
+cli.add_command(run_simulations, name="run")
+
 
 if __name__ == "__main__":
     cli()
