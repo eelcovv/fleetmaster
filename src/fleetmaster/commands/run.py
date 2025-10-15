@@ -1,99 +1,79 @@
 import logging
-from pathlib import Path
-
-# from pymeshup.gui.capytaine_runner import run_capytaine
-import capytaine as cpt
 import click
-import numpy as np
 import yaml
-from capytaine.io.xarray import export_dataset, save_dataset_as_netcdf
+from pydantic import ValidationError
 
 from fleetmaster.core.engine import run_simulation_batch
 from fleetmaster.core.settings import SimulationSettings
 
 logger = logging.getLogger(__name__)
 
-matlog = logging.getLogger("matplotlib")
-matlog.setLevel(level=logging.WARNING)
+# Set logging levels for external libraries
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
+logging.getLogger("capytaine").setLevel(logging.WARNING)
 
-caplog = logging.getLogger("capytaine")
-caplog.setLevel(level=logging.WARNING)
+def create_cli_options(model):
+    """Dynamically create click options from a Pydantic model."""
+    def decorator(f):
+        for name, field in model.model_fields.items():
+            option_name = f"--{name.replace('_', '-')}"
+            option_type = field.annotation
+            
+            # Handle List types in Click
+            if hasattr(option_type, '__origin__') and option_type.__origin__ in (list, list):
+                option_type = str  # Treat list inputs as comma-separated strings
+            
+            f = click.option(
+                option_name,
+                type=option_type,
+                default=None, # Default to None to distinguish between not set and set to a default value
+                help=field.description or f"Set the {name}.",
+                multiple=True if hasattr(field.annotation, '__origin__') and field.annotation.__origin__ in (list, list) else False,
+            )(f)
+        return f
+    return decorator
 
-
-@click.command()
+@click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
 @click.option("--settings-file", type=click.Path(exists=True), help="Path to a YAML settings file.")
-@click.option("--stl-file", help="Override STL file from settings.")
-def run(settings_file, stl_file, **kwargs):
-    """Runs a set of capytaine simulations."""
-
+@create_cli_options(SimulationSettings)
+def run(settings_file, **kwargs):
+    """Runs a set of capytaine simulations based on provided settings."""
+    
+    # 1. Load settings from YAML file if provided
     config = {}
     if settings_file:
         with open(settings_file, "r") as f:
-            config = yaml.safe_load(f)
+            config = yaml.safe_load(f) or {}
 
-    # CLI-opties overschrijven de YAML-instellingen
-    if stl_file:
-        config["stl_file"] = stl_file
-    # ... verwerk andere kwargs ...
+    # 2. Override with CLI options
+    # Filter out None values so they don't override YAML settings
+    cli_args = {k: v for k, v in kwargs.items() if v is not None and v != ()}
+
+    # Convert tuple from 'multiple=True' to list for Pydantic
+    for key, value in cli_args.items():
+        if isinstance(value, tuple):
+            # Attempt to convert string numbers to float
+            try:
+                cli_args[key] = [float(i) for i in value]
+            except (ValueError, TypeError):
+                cli_sargs[key] = list(value)
+
+
+    config.update(cli_args)
 
     try:
-        # Valideer en structureer de data met Pydantic
+        # 3. Validate settings with Pydantic
         settings = SimulationSettings(**config)
+        logger.info("Successfully validated simulation settings.")
+        logger.debug(f"Running with settings: {settings.model_dump_json(indent=2)}")
 
-        # Roep de core logica aan met de gevalideerde settings
-        run_simulation_batch(settings.model_dump())
-        click.echo("Run completed successfully!")
+        # 4. Run the simulation
+        # Assuming run_simulation_batch expects the Pydantic model or a dict
+        run_simulation_batch(settings)
+        click.echo("✅ Run completed successfully!")
 
+    except ValidationError as e:
+        click.echo("❌ Error: Invalid settings provided.", err=True)
+        click.echo(e, err=True)
     except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-
-
-def make_database(body, omegas, wave_directions, water_depth=0, water_level=0):
-    bem_solver = cpt.BEMSolver()
-
-    # SOLVE BEM PROBLEMS
-    problems = []
-    logger.debug("Collecting problems")
-    for omega in omegas:
-        problems += [
-            cpt.RadiationProblem(
-                omega=omega,
-                body=body,
-                radiating_dof=dof,
-                water_depth=water_depth,
-                free_surface=water_level,
-            )
-            for dof in body.dofs
-        ]
-        for wave_direction in wave_directions:
-            problems += [
-                cpt.DiffractionProblem(
-                    omega=omega,
-                    body=body,
-                    wave_direction=wave_direction,
-                    water_depth=water_depth,
-                    free_surface=water_level,
-                )
-            ]
-    results = []
-    n_problems = len(problems)
-    for cnt, problem in enumerate(problems):
-        problem_type = type(problem).__name__
-        try:
-            problem_dof = problem.radiating_dof
-        except AttributeError:
-            problem_dof = "None"
-        problem_ome = problem.omega
-        problem_dir = problem.wave_direction
-        logger.debug(
-            f"Solving {cnt:02d}/{n_problems} : {problem_type:20s} {problem_dof:6s} {problem_ome:8.2f} {problem_dir:8.2f}"
-        )
-
-        result = bem_solver.solve(problem)
-        results.append(result)
-    # *radiation_results, diffraction_result = results
-    dataset = cpt.assemble_dataset(results)
-
-    # dataset['diffraction_result'] = diffraction_result
-
-    return dataset
+        click.echo(f"❌ An unexpected error occurred: {e}", err=True)
