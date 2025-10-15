@@ -18,8 +18,9 @@ class SimulationSettings(BaseModel):
     water_level: float | list[float] = 0.0
 
     @field_validator("forward_speed")
-    def speed_must_be_positive(cls: type["SimulationSettings"], v: float | list[float]) -> float | list[float]:
-        error_message = "Forward speed must be positive"
+    def speed_must_be_positive(cls, v: float | list[float]) -> float | list[float]:
+        """Validate that forward speed is non-negative."""
+        error_message = "Forward speed must be non-negative"
         if isinstance(v, list):
             if any(speed < 0 for speed in v):
                 raise ValueError(error_message)
