@@ -38,8 +38,22 @@ dependencies = [
 gui = [
     "pyside6-essentials>=6.10.0",
 ]
+dev = [
+    "pytest>=7.2.0",
+    "pre-commit>=4.3.0",
+    "tox-uv>=1.11.3",
+    "deptry>=0.22.0",
+    "mypy>=1.18.2",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.9.2",
+    "mkdocs>=1.4.2",
+    "mkdocs-material>=8.5.10",
+    "mkdocstrings[python]>=0.26.1",
+    "types-PyYAML>=6.0.12.12",
+    "pyside6-essentials>=6.10.0",
+]
 
-[dependency_groups]
+[dependency-groups]
 dev = [
     "pytest>=7.2.0",
     "pre-commit>=4.3.0",
