@@ -75,7 +75,7 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
     return output_file
 
 
-def _prepare_capytaine_body(stl_file: str, lid: bool, grid_symmetry: bool) -> cpt.FloatingBody:
+def _prepare_capytaine_body(stl_file: str, lid: bool, grid_symmetry: bool) -> Any:
     """
     Load an STL file and configure a Capytaine FloatingBody object.
     """
