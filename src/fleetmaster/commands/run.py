@@ -1,5 +1,6 @@
 import logging
 import types
+from typing import get_origin
 
 import click
 import yaml
@@ -30,7 +31,7 @@ def create_cli_options(model):
                 option_type = non_none_types[0] if non_none_types else str
 
             # Handle List types in Click
-            if hasattr(option_type, "__origin__") and option_type.__origin__ in (list, list):
+            if get_origin(option_type) in (list, list):
                 option_type = str  # Treat list inputs as comma-separated strings
 
             f = click.option(
@@ -38,7 +39,7 @@ def create_cli_options(model):
                 type=option_type,
                 default=None,  # Default to None to distinguish between not set and set to a default value
                 help=field.description or f"Set the {name}.",
-                multiple=bool(hasattr(option_type, "__origin__") and option_type.__origin__ in (list, list)),
+                multiple=get_origin(option_type) in (list, list),
             )(f)
         return f
 
