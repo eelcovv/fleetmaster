@@ -188,12 +188,17 @@ skip_empty = true
 branch = true
 source = ["src"]
 
+
 # ========================================================================================
 # 🔹 DEBTRY
 # ========================================================================================
 [tool.deptry]
-# Ignore dependencies that are not directly imported into the code
-ignore = [
+# This section defines which errors to ignore for which packages.
+# It is NOT an inline table, but a nested table structure.
+
+[tool.deptry.per_rule_ignores]
+# Ignore "unused dependency" errors (DEP002) for these packages
+"DEP002" = [
     "h5netcdf",
     "vtk",
     "pytest",
@@ -209,8 +214,8 @@ ignore = [
     "types-PyYAML",
 ]
 
-# Ignore our own package
-per_rule_ignores = { "DEP003" = ["fleetmaster"] }
+# Ignore "transitive dependency" error (DEP003) for our own package
+"DEP003" = ["fleetmaster"]
 
 
 # ========================================================================================
