@@ -30,6 +30,7 @@ dependencies = [
     "rich>=14.2.0",
 ]
 
+
 [dependency-groups]
 dev = [
     "pytest>=7.2.0",
@@ -44,6 +45,7 @@ dev = [
     "mkdocstrings[python]>=0.26.1",
     "types-PyYAML>=6.0.12.12",
     "PyQt6-stubs>=6.6.0.3",
+    "pyside6-essentials>=6.10.0",
 ]
 
 [project.urls]

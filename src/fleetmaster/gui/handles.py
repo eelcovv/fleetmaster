@@ -1,7 +1,8 @@
 # fleetmaster/gui/handlers.py
 import logging
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6 import pyqtSignal
+from PySide6.QtCore import QObject
 
 
 class QtLogHandler(logging.Handler, QObject):

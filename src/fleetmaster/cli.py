@@ -16,7 +16,7 @@ import logging
 import click
 
 from . import __version__
-from .commands import run
+from .commands import gui, run
 from .logging_setup import setup_general_logger
 
 logger = setup_general_logger()
@@ -70,8 +70,8 @@ def cli(verbose: int) -> None:
         )
 
 
-# Register all subcommands
 cli.add_command(run, name="run")
+cli.add_command(gui, name="gui")
 
 
 if __name__ == "__main__":
