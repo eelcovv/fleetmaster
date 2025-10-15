@@ -5,15 +5,10 @@ import capytaine as cpt
 import numpy as np
 from capytaine.io.xarray import export_dataset, save_dataset_as_netcdf
 
+from .exceptions import SimulationConfigurationError
 from .settings import SimulationSettings
 
 logger = logging.getLogger(__name__)
-
-
-class SimulationConfigurationError(ValueError):
-    """Custom exception for simulation configuration errors."""
-
-    LID_AND_SYMMETRY_ENABLED = "Cannot have both lid and grid_symmetry True simultaneously."
 
 
 def make_database(body, omegas, wave_directions, water_depth, water_level):
