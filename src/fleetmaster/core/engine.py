@@ -64,8 +64,10 @@ def run_simulation_batch(settings: SimulationSettings, recalculate_if_exists: bo
         logger.info(f"Processing STL file: {stl_file}")
 
         file_base_name = Path(stl_file).stem
-        output_dir = Path("results")
-        output_dir.mkdir(exist_ok=True)
+
+        output_dir = Path(settings.output_directory) if settings.output_directory else Path(stl_file).parent
+
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         nc_file = output_dir / f"{file_base_name}.nc"
         tec_dir = output_dir / f"{file_base_name}_tecplot"

@@ -6,6 +6,7 @@ class SimulationSettings(BaseModel):
     """Defines all possible settings for a simulation."""
 
     stl_files: list[str] = Field(description="Path to the STL mesh files.")
+    output_directory: str | None = Field(default=None, description="Directory to save the output files.")
     wave_periods: list[float] = Field(default=[5, 10, 15, 20])
     wave_directions: list[float] = Field(default=[0, 45, 90, 135, 180])
     forward_speed: float | list[float] = 0.0
