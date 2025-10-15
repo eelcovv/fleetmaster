@@ -1,6 +1,6 @@
 import logging
 import types
-from typing import Any, Callable, TypeVar, get_origin
+from typing import Any, Callable, TypeVar, Union, get_args, get_origin
 
 import click
 import yaml
@@ -29,13 +29,14 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
             option_type = field.annotation
 
             # Handle Union types (e.g., int | None)
-            if isinstance(option_type, types.UnionType):
+            if get_origin(option_type) in (types.UnionType, Union):
                 # Use the first non-None type from the union
-                non_none_types = [t for t in option_type.__args__ if t is not type(None)]
+                args = get_args(option_type)
+                non_none_types = [t for t in args if t is not type(None)]
                 option_type = non_none_types[0] if non_none_types else str
 
             # Handle List types in Click
-            if get_origin(option_type) in (list, list):
+            if get_origin(option_type) is list:
                 option_type = str  # Treat list inputs as comma-separated strings
 
             f = click.option(
@@ -43,7 +44,7 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
                 type=option_type,
                 default=None,  # Default to None to distinguish between not set and set to a default value
                 help=field.description or f"Set the {name}.",
-                multiple=get_origin(option_type) in (list, list),
+                multiple=get_origin(option_type) is list,
             )(f)
         return f
 
