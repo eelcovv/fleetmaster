@@ -2,10 +2,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import capytaine as cpt  # type: ignore[import-untyped]
+import capytaine as cpt
 import numpy as np
 import numpy.typing as npt
-from capytaine.io.xarray import export_dataset  # type: ignore[import-untyped]
+from capytaine.io.xarray import export_dataset
 
 from .exceptions import SimulationConfigurationError
 from .settings import SimulationSettings

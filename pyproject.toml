@@ -43,14 +43,13 @@ dev = [
     "pre-commit>=2.20.0",
     "tox-uv>=1.11.3",
     "deptry>=0.22.0",
-    "mypy>=0.991",
+    "mypy>=1.5.1",
     "pytest-cov>=4.0.0",
     "ruff>=0.9.2",
     "mkdocs>=1.4.2",
     "mkdocs-material>=8.5.10",
     "mkdocstrings[python]>=0.26.1",
     "types-PyYAML>=6.0.12.12",
-    "PyQt6-stubs>=6.6.0.3",
     "pyside6-essentials>=6.10.0",
 ]
 
@@ -95,6 +94,18 @@ check_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "capytaine",
+    "capytaine.io.xarray",
+    "click",
+    "PySide6.*",
+    "rich.logging",
+    "vtk",
+    "yaml",
+]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
