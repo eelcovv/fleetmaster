@@ -14,6 +14,7 @@ Commands:
 import logging
 
 import click
+from rich.logging import RichHandler
 
 from . import __version__
 from .commands import gui, run
@@ -43,6 +44,15 @@ def cli(verbose: int) -> None:
     """
     # Get the root logger of the package and set its level
     package_logger = logging.getLogger("fleetmaster")
+
+    # Clear existing handlers to avoid duplicates
+    if package_logger.hasHandlers():
+        package_logger.handlers.clear()
+
+    # Add RichHandler for beautiful console output
+    handler = RichHandler(rich_tracebacks=True)
+    package_logger.addHandler(handler)
+    package_logger.propagate = False  # Prevent duplicate logging to the root logger
 
     # These constants are not defined, let's define them for clarity
     VERBOSITY_DEBUG, VERBOSITY_INFO, LOGLEVEL_DEBUG, LOGLEVEL_INFO, LOGLEVEL_DEFAULT = (

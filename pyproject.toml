@@ -27,11 +27,16 @@ dependencies = [
     "click>=8.1.8",
     "numpy>=2.0.2",
     "pydantic>=2.12.2",
+    "pyyaml>=6.0.3",
     "rich>=14.2.0",
 ]
 
+[project.optional-dependencies]
+gui = [
+    "pyside6-essentials>=6.10.0",
+]
 
-[dependency-groups]
+[dependency_groups]
 dev = [
     "pytest>=7.2.0",
     "pre-commit>=2.20.0",
@@ -200,3 +205,8 @@ dependency_groups = [
     "dev",
 ]
 commands = [["uv", "pip", "tree"]]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+]
