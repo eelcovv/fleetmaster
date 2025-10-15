@@ -5,7 +5,7 @@ from typing import Any
 import capytaine as cpt  # type: ignore[import-untyped]
 import numpy as np
 import numpy.typing as npt
-from capytaine.io.xarray import export_dataset, save_dataset_as_netcdf  # type: ignore[import-untyped]
+from capytaine.io.xarray import export_dataset  # type: ignore[import-untyped]
 
 from .exceptions import SimulationConfigurationError
 from .settings import SimulationSettings
@@ -79,7 +79,7 @@ def run_simulation_batch(settings: SimulationSettings, recalculate_if_exists: bo
     # These could be added to SimulationSettings if they need to be configurable.
     lid = True
     grid_symmetry = False
-    water_depth = 0.0  # 0 for deep water
+    water_depth = np.inf
     water_level = 0.0
 
     if lid and grid_symmetry:
@@ -110,10 +110,12 @@ def run_simulation_batch(settings: SimulationSettings, recalculate_if_exists: bo
         )
 
         logger.info(f"Writing result as NetCDF file: {nc_file}")
-        save_dataset_as_netcdf(database, nc_file)
+        export_dataset(str(nc_file), database, format="netcdf")
+        logger.debug("Success")
 
         logger.info(f"Writing result to Tecplot directory: {tec_dir}")
-        export_dataset(database, tec_dir, format="nemoh")
+        export_dataset(str(tec_dir), database, format="nemoh")
+        logger.debug("Success")
     else:
         logger.info(f"Loading existing results from {nc_file}. Use --recalculate to force recalculation.")
 
