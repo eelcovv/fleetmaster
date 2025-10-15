@@ -62,7 +62,10 @@ def run_simulation_batch(settings: SimulationSettings, recalculate_if_exists: bo
     tec_dir.mkdir(exist_ok=True)
 
     wave_frequencies = 2 * np.pi / np.array(settings.wave_periods)
-    wave_directions = np.deg2rad(settings.wave_directions)
+
+    # Handle the case where wave_directions might be None
+    wave_directions_list = settings.wave_directions if settings.wave_directions is not None else [0.0]
+    wave_directions = np.deg2rad(wave_directions_list)
 
     # Example settings from the original script - decide how to handle them.
     # These could be added to SimulationSettings if they need to be configurable.
