@@ -141,3 +141,6 @@ cython_debug/
 .direnv
 .nix-ld-compat
 .envrc
+*.tec
+*.nc
+*.hd5
