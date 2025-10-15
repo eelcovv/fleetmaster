@@ -2,10 +2,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import capytaine as cpt  # type: ignore[import]
+import capytaine as cpt  # type: ignore[import-untyped]
 import numpy as np
 import numpy.typing as npt
-from capytaine.io.xarray import export_dataset, save_dataset_as_netcdf  # type: ignore[import]
+from capytaine.io.xarray import export_dataset, save_dataset_as_netcdf  # type: ignore[import-untyped]
 
 from .exceptions import SimulationConfigurationError
 from .settings import SimulationSettings
@@ -25,7 +25,7 @@ def make_database(
     problems: list[Any] = []
     logger.debug("Collecting problems")
     for omega in omegas:
-        problems.extend(  # type: ignore[import]
+        problems.extend(
             cpt.RadiationProblem(
                 omega=omega,
                 body=body,
