@@ -1,4 +1,5 @@
 import logging
+import types
 
 import click
 import yaml
@@ -21,6 +22,12 @@ def create_cli_options(model):
         for name, field in model.model_fields.items():
             option_name = f"--{name.replace('_', '-')}"
             option_type = field.annotation
+
+            # Handle Union types (e.g., int | None)
+            if isinstance(option_type, types.UnionType):
+                # Use the first non-None type from the union
+                non_none_types = [t for t in option_type.__args__ if t is not type(None)]
+                option_type = non_none_types[0] if non_none_types else str
 
             # Handle List types in Click
             if hasattr(option_type, "__origin__") and option_type.__origin__ in (list, list):
