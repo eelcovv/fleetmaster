@@ -223,7 +223,7 @@ def process_all_cases_for_one_stl(
     if len(water_depths) > 1:
         expand_dims.append("water_depth")
     if len(forwards_speeds) > 1:
-        expand_dims.append("forwards_speeds")
+        expand_dims.append("forwards_speed")
 
     all_datasets = []
     for water_level in water_levels:
