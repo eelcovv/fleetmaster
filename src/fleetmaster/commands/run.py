@@ -152,6 +152,39 @@ def _load_and_validate_settings(
         return settings
 
 
+def _get_option_type_info(raw_option_type: Any) -> tuple[bool, bool, Any]:
+    """Inspects a type annotation and returns its CLI characteristics."""
+    is_list = False
+    is_bool = False
+    final_type = None
+
+    origin = get_origin(raw_option_type)
+    if origin in (types.UnionType, Union):
+        args = get_args(raw_option_type)
+        non_none_types = [t for t in args if t is not type(None)]
+
+        for arg in non_none_types:
+            if get_origin(arg) is list:
+                is_list = True
+                # For list types, we don't need to determine final_type, as it will be str
+                return is_list, is_bool, None
+
+        # If no list, find the first primitive type
+        primitive_args = [t for t in non_none_types if get_origin(t) is not list]
+        if primitive_args:
+            final_type = primitive_args[0]
+    else:
+        if get_origin(raw_option_type) is list:
+            is_list = True
+        else:
+            final_type = raw_option_type
+
+    if final_type is bool:
+        is_bool = True
+
+    return is_list, is_bool, final_type
+
+
 def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
     """Dynamically create click options from a Pydantic model."""
 
@@ -162,35 +195,24 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
             if name == "stl_files":
                 continue
 
+            is_list, is_bool, final_type = _get_option_type_info(field.annotation)
+
             option_name_base = name.replace("_", "-")
-            option_name = f"--{option_name_base}"
-            raw_option_type = field.annotation
-
-            # Determine the base type, especially for unions like `list[float] | None`
-            option_type = raw_option_type
-            origin = get_origin(raw_option_type)
-            if origin in (types.UnionType, Union):
-                args = get_args(raw_option_type)
-                non_none_types = [t for t in args if t is not type(None)]
-                option_type = non_none_types[0] if non_none_types else str
-                origin = get_origin(option_type)  # Re-check origin for types like list[float]
-
-            is_list = origin is list
-            is_bool = option_type is bool
-
             help_text = field.description or f"Set the {name}."
 
             if is_bool:
                 option_name = f"--{option_name_base}/--no-{option_name_base}"
                 f = click.option(option_name, default=None, help=help_text)(f)
             elif is_list:
+                option_name = f"--{option_name_base}"
                 help_text += (
                     " Can be specified multiple times. Accepts single values, comma/space-separated strings, or "
                     "Python-like ranges (e.g., '1:11:2')."
                 )
                 f = click.option(option_name, type=str, default=None, help=help_text, multiple=True)(f)
             else:
-                f = click.option(option_name, type=option_type, default=None, help=help_text)(f)
+                option_name = f"--{option_name_base}"
+                f = click.option(option_name, type=final_type, default=None, help=help_text)(f)
         return f
 
     return decorator
