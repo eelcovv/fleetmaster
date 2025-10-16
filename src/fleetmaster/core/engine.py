@@ -139,19 +139,27 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
 
     # --- Setup simulation parameters ---
     wave_frequencies = 2 * np.pi / np.array(settings.wave_periods)
-    wave_directions_list = settings.wave_directions if settings.wave_directions is not None else [0.0]
+    wave_directions_list = settings.wave_directions
     wave_directions = np.deg2rad(wave_directions_list)
 
-    lid = True
-    grid_symmetry = False
-    water_depth = np.inf
-    water_level = 0.0
+    lid = settings.lid
+    grid_symmetry = settings.grid_symmetry
+    water_depth = settings.water_depth
+    water_level = settings.water_level
     if lid and grid_symmetry:
         raise SimulationConfigurationError(SimulationConfigurationError.LID_AND_SYMMETRY_ENABLED)
 
-    logger.info(f"Directions [rad]: {wave_directions}")
-    logger.info(f"Periods [s]: {settings.wave_periods}")
-    logger.info(f"Frequencies (omega) [rad/s]: {wave_frequencies}")
+    fmt_str = "%-40s: %s"
+    logger.info(fmt_str % ("STL file", stl_file))
+    logger.info(fmt_str % ("Output file", output_file))
+    logger.info(fmt_str % ("Grid symmetry", grid_symmetry))
+    logger.info(fmt_str % ("Use lid", lid))
+    logger.info(fmt_str % ("Directions [rad]", wave_directions))
+    logger.info(fmt_str % ("Water depth [m]", water_depth))
+    logger.info(fmt_str % ("Water level [m]", water_level))
+    logger.info(fmt_str % ("Forward speed [m/s]", settings.forward_speed))
+    logger.info(fmt_str % ("Export to NetCDF", settings.export_to_netcdf))
+    logger.info(fmt_str % ("Wave periods [s]", settings.wave_periods))
 
     # --- Prepare Capytaine body and run BEM calculations ---
     boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)

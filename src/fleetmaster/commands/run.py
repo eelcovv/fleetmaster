@@ -93,27 +93,44 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
             if name == "stl_files":
                 continue
 
-            option_name = f"--{name.replace("_", "-")}"
-            option_type = field.annotation
+            option_name_base = name.replace("_", "-")
+            raw_option_type = field.annotation
+            is_bool = False
 
-            # Handle Union types (e.g., int | None)
-            if get_origin(option_type) in (types.UnionType, Union):
-                # Use the first non-None type from the union
-                args = get_args(option_type)
+            # Determine the base type, especially for unions like `bool | None`
+            option_type = raw_option_type
+            if get_origin(raw_option_type) in (types.UnionType, Union):
+                args = get_args(raw_option_type)
                 non_none_types = [t for t in args if t is not type(None)]
                 option_type = non_none_types[0] if non_none_types else str
 
-            # Handle List types in Click
-            if get_origin(option_type) is list:
-                option_type = str  # Treat list inputs as comma-separated strings
+            if option_type is bool:
+                is_bool = True
 
-            f = click.option(
-                option_name,
-                type=option_type,
-                default=None,  # Default to None to distinguish between not set and set to a default value
-                help=field.description or f"Set the {name}.",
-                multiple=get_origin(option_type) is list,
-            )(f)
+            if is_bool:
+                # For booleans, create a toggle flag like --lid/--no-lid.
+                # Click automatically handles this, passing True for --lid, False for --no-lid.
+                # `default=None` means if neither is passed, the value is None,
+                # allowing Pydantic to use its own default.
+                option_name = f"--{option_name_base}/--no-{option_name_base}"
+                f = click.option(
+                    option_name,
+                    default=None,
+                    help=field.description or f"Toggle for the '{name}' setting.",
+                )(f)
+            else:
+                # Existing logic for other types
+                option_name = f"--{option_name_base}"
+                # For lists, Click expects to handle multiple values, but the type of each value
+                # should be specified. We'll assume string and convert later.
+                click_type = str if get_origin(option_type) is list else option_type
+                f = click.option(
+                    option_name,
+                    type=click_type,
+                    default=None,  # Default to None to distinguish not set vs. set to default
+                    help=field.description or f"Set the {name}.",
+                    multiple=get_origin(option_type) is list,
+                )(f)
         return f
 
     return decorator
