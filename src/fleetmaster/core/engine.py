@@ -10,7 +10,6 @@ import pandas as pd
 import trimesh
 from capytaine.io.xarray import export_dataset
 
-from .exceptions import SimulationConfigurationError
 from .settings import SimulationSettings
 
 logger = logging.getLogger(__name__)
@@ -18,10 +17,11 @@ logger = logging.getLogger(__name__)
 
 def make_database(
     body: Any,
-    omegas: npt.NDArray[np.float64],
-    wave_directions: npt.NDArray[np.float64],
+    omegas: list | npt.NDArray[np.float64],
+    wave_directions: list | npt.NDArray[np.float64],
     water_depth: float,
     water_level: float,
+    forward_speed: float,
 ) -> Any:
     """Create a dataset of BEM results for a given body and conditions."""
     bem_solver = cpt.BEMSolver()
@@ -35,6 +35,7 @@ def make_database(
                 radiating_dof=dof,
                 water_depth=water_depth,
                 free_surface=water_level,
+                forward_speed=forward_speed,
             )
             for dof in body.dofs
         )
@@ -46,11 +47,20 @@ def make_database(
                     wave_direction=wave_direction,
                     water_depth=water_depth,
                     free_surface=water_level,
+                    forward_speed=forward_speed,
                 )
             )
 
     results = [bem_solver.solve(problem) for problem in problems]
-    return cpt.assemble_dataset(results)
+
+    database = cpt.assemble_dataset(results)
+
+    for coord_name, coord_data in database.coords.items():
+        if isinstance(coord_data.dtype, pd.CategoricalDtype):
+            logger.debug(f"Converting coordinate '{coord_name}' from Categorical to string dtype.")
+            database[coord_name] = database[coord_name].astype(str)
+
+    return database
 
 
 def _setup_output_file(settings: SimulationSettings) -> Path:
@@ -138,55 +148,88 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
     logger.info(f"Processing STL file: {stl_file}")
 
     # --- Setup simulation parameters ---
-    wave_frequencies = 2 * np.pi / np.array(settings.wave_periods)
-    wave_directions_list = settings.wave_directions
-    wave_directions = np.deg2rad(wave_directions_list)
+    wave_periods = settings.wave_periods if isinstance(settings.wave_periods, list) else [settings.wave_periods]
+    wave_frequencies = 2 * np.pi / np.array(wave_periods)
+    wave_directions = (
+        settings.wave_directions if isinstance(settings.wave_directions, list) else [settings.wave_directions]
+    )
+    wave_directions = np.deg2rad(wave_directions)
+    water_depths = settings.water_depth if isinstance(settings.water_depth, list) else [settings.water_depth]
+    water_levels = settings.water_level if isinstance(settings.water_level, list) else [settings.water_level]
+
+    forwards_speeds = settings.forward_speed if isinstance(settings.forward_speed, list) else [settings.forward_speed]
 
     lid = settings.lid
     grid_symmetry = settings.grid_symmetry
-    water_depth = settings.water_depth
-    water_level = settings.water_level
-    if lid and grid_symmetry:
-        raise SimulationConfigurationError(SimulationConfigurationError.LID_AND_SYMMETRY_ENABLED)
+
+    # check is done by Settings, so this should no happen anymore
+    assert not (lid and grid_symmetry), "Cannot have both lid and grid_symmetry True simultaneously."  # noqa: S101
 
     fmt_str = "%-40s: %s"
     logger.info(fmt_str % ("STL file", stl_file))
     logger.info(fmt_str % ("Output file", output_file))
     logger.info(fmt_str % ("Grid symmetry", grid_symmetry))
     logger.info(fmt_str % ("Use lid", lid))
-    logger.info(fmt_str % ("Directions [rad]", wave_directions))
-    logger.info(fmt_str % ("Water depth [m]", water_depth))
-    logger.info(fmt_str % ("Water level [m]", water_level))
-    logger.info(fmt_str % ("Forward speed [m/s]", settings.forward_speed))
+    logger.info(fmt_str % ("Direction(s) [rad]", wave_directions))
+    logger.info(fmt_str % ("Wave period(s) [s]", wave_periods))
+    logger.info(fmt_str % ("Water depth(s) [m]", water_depths))
+    logger.info(fmt_str % ("Water level(s) [m]", water_levels))
+    logger.info(fmt_str % ("Forward speed(s) [m/s]", forwards_speeds))
     logger.info(fmt_str % ("Export to NetCDF", settings.export_to_netcdf))
-    logger.info(fmt_str % ("Wave periods [s]", settings.wave_periods))
 
-    # --- Prepare Capytaine body and run BEM calculations ---
-    boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)
-    logger.info("Starting BEM calculations...")
-    database = make_database(
-        body=boat,
-        omegas=wave_frequencies,
+    process_all_cases_for_one_stl(
+        stl_file=stl_file,
+        wave_frequencies=wave_frequencies,
         wave_directions=wave_directions,
-        water_level=water_level,
-        water_depth=water_depth,
+        water_depths=water_depths,
+        water_levels=water_levels,
+        forwards_speeds=forwards_speeds,
+        lid=lid,
+        grid_symmetry=grid_symmetry,
+        output_file=output_file,
+        export_to_netcdf=settings.export_to_netcdf,
     )
 
-    # --- Pre-process data for storage ---
-    for coord_name, coord_data in database.coords.items():
-        if isinstance(coord_data.dtype, pd.CategoricalDtype):
-            logger.debug(f"Converting coordinate '{coord_name}' from Categorical to string dtype.")
-            database[coord_name] = database[coord_name].astype(str)
 
-    # --- Write data to HDF5 file ---
+def process_all_cases_for_one_stl(
+    stl_file: str,
+    wave_frequencies: list | npt.NDArray[np.float64],
+    wave_directions: list | npt.NDArray[np.float64],
+    water_depths: list | npt.NDArray[np.float64],
+    water_levels: list | npt.NDArray[np.float64],
+    forwards_speeds: list | npt.NDArray[np.float64],
+    lid: bool,
+    grid_symmetry: bool,
+    output_file: Path,
+    export_to_netcdf: bool = False,
+):
     group_name = Path(stl_file).stem
     logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
-    database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
+    boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)
+
+    for water_level in water_levels:
+        for water_depth in water_depths:
+            for forward_speed in forwards_speeds:
+                logger.info("Starting BEM calculations...")
+                database = make_database(
+                    body=boat,
+                    omegas=wave_frequencies,
+                    wave_directions=wave_directions,
+                    water_level=water_level,
+                    water_depth=water_depth,
+                    forward_speed=forward_speed,
+                )
+
+                logger.debug(
+                    f"Writing database for water depth = {water_depth}, water level = {water_level} and forward speed = {forward_speed}"
+                )
+                database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
+
     _write_geometric_data_to_hdf5(output_file, group_name, stl_file)
     logger.debug(f"Successfully wrote all data for {stl_file} to HDF5.")
 
     # --- Handle optional legacy output ---
-    if settings.export_to_netcdf:
+    if export_to_netcdf:
         logger.info("Exporting to individual NetCDF and Tecplot files as requested.")
         output_dir = output_file.parent
         nc_file = output_dir / f"{group_name}.nc"
