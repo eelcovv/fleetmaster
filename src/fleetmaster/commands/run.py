@@ -36,6 +36,20 @@ def _expand_stl_files(stl_files: tuple[str, ...]) -> list[str]:
     return expanded_files
 
 
+def _convert_to_numeric(value_str: str, target_type: type) -> Any:
+    """
+    Converts a string to a numeric type, with special handling for
+    'inf' and 'nan' strings.
+    """
+    val_lower = value_str.lower().strip()
+    if val_lower in ("inf", "infinity", "np.inf"):
+        return np.inf
+    if val_lower in ("nan", "np.nan"):
+        return np.nan
+    # Fallback to the original type conversion (e.g., float(value_str))
+    return target_type(value_str)
+
+
 def _parse_range_string(range_str: str) -> list[float] | None:
     """Parses a string like 'start:stop:step' into a list of numbers."""
     if ":" not in range_str:
@@ -47,9 +61,9 @@ def _parse_range_string(range_str: str) -> list[float] | None:
 
     try:
         # Convert parts to float, providing defaults for missing parts
-        start = float(parts[0]) if parts[0] else 0.0
-        stop = float(parts[1]) if len(parts) > 1 and parts[1] else None
-        step = float(parts[2]) if len(parts) > 2 and parts[2] else 1.0
+        start = _convert_to_numeric(parts[0], float) if parts[0] else 0.0
+        stop = _convert_to_numeric(parts[1], float) if len(parts) > 1 and parts[1] else None
+        step = _convert_to_numeric(parts[2], float) if len(parts) > 2 and parts[2] else 1.0
 
         if stop is None:
             return None  # Stop is mandatory for a range
@@ -58,6 +72,46 @@ def _parse_range_string(range_str: str) -> list[float] | None:
 
     except (ValueError, TypeError):
         return None
+
+
+def _get_list_item_type(field_annotation: Any) -> type:
+    """Extracts the inner type from a list annotation (e.g., float from list[float])."""
+    raw_origin = get_origin(field_annotation)
+    if raw_origin in (types.UnionType, Union):
+        # Find the list type in the union to get its args
+        for arg in get_args(field_annotation):
+            if get_origin(arg) is list:
+                return get_args(arg)[0] if get_args(arg) else str
+    elif raw_origin is list:
+        return get_args(field_annotation)[0] if get_args(field_annotation) else str
+    return str
+
+
+def _parse_cli_value_string(value_str: str, item_type: type, key: str) -> list[Any]:
+    """
+    Parses a single string from the CLI, handling ranges, delimited lists,
+    and single values.
+    """
+    # 1. Try to parse as a range
+    range_vals = _parse_range_string(value_str)
+    if range_vals is not None:
+        return range_vals
+
+    # 2. Try to parse as a delimited string
+    if re.search(r"[,;\s]", value_str):
+        split_values = [v for v in re.split(r"[,;\s]+", value_str.strip()) if v]
+        try:
+            return [_convert_to_numeric(i, item_type) for i in split_values]
+        except (ValueError, TypeError):
+            logger.warning(f"Could not convert all delimited values in '{value_str}' for '{key}'.")
+            return split_values  # Return as strings on failure
+
+    # 3. Treat as a single value
+    try:
+        return [_convert_to_numeric(value_str, item_type)]
+    except (ValueError, TypeError):
+        logger.warning(f"Could not convert single value '{value_str}' for '{key}'.")
+        return [value_str]
 
 
 def _process_cli_args(kwargs: dict[str, Any], model: type[BaseModel]) -> dict[str, Any]:
@@ -69,45 +123,16 @@ def _process_cli_args(kwargs: dict[str, Any], model: type[BaseModel]) -> dict[st
         if not field:
             continue
 
-        # Check if the model field is a list type
-        field_type = field.annotation
-        origin = get_origin(field_type)
-        if origin in (types.UnionType, Union):
-            args = get_args(field_type)
-            non_none_types = [t for t in args if t is not type(None)]
-            field_type = non_none_types[0] if non_none_types else str
-            origin = get_origin(field_type)
-
-        if not (origin is list and isinstance(value_tuple, tuple)):
+        is_list, _, _ = _get_option_type_info(field.annotation)
+        if not (is_list and isinstance(value_tuple, tuple)):
             continue
 
-        # This option is a list type, and we have a tuple of strings from Click
+        list_item_type = _get_list_item_type(field.annotation)
+
         final_values: list[Any] = []
-        list_item_type = get_args(field_type)[0] if get_args(field_type) else str
-
         for value_str in value_tuple:
-            # 1. Try to parse as a range
-            range_vals = _parse_range_string(value_str)
-            if range_vals is not None:
-                final_values.extend(range_vals)
-                continue
-
-            # 2. Try to parse as a delimited string
-            if re.search(r"[,;\s]", value_str):
-                split_values = [v for v in re.split(r"[,;\s]+", value_str.strip()) if v]
-                try:
-                    final_values.extend([list_item_type(i) for i in split_values])
-                except (ValueError, TypeError):
-                    logger.warning(f"Could not convert all values in '{value_str}' for '{key}'.")
-                    final_values.extend(split_values)  # Add as strings on failure
-                continue
-
-            # 3. Treat as a single value
-            try:
-                final_values.append(list_item_type(value_str))
-            except (ValueError, TypeError):
-                logger.warning(f"Could not convert value '{value_str}' for '{key}'.")
-                final_values.append(value_str)
+            parsed_values = _parse_cli_value_string(value_str, list_item_type, key)
+            final_values.extend(parsed_values)
 
         # De-duplicate values while preserving order
         cli_args[key] = list(dict.fromkeys(final_values))
