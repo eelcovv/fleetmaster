@@ -233,21 +233,12 @@ def process_all_cases_for_one_stl(
                     forward_speed=forward_speed,
                 )
 
-                iter_coords = {
-                    "water_level": water_level,
-                    "water_depth": water_depth,
-                    "forward_speed": forward_speed,
-                }
-
-                # Assign scalar coordinates for iteration variables that are not already dimensions.
-                coords_to_assign = {k: v for k, v in iter_coords.items() if k not in database.dims}
-                database = database.assign_coords(coords_to_assign)
-
-                # Expand these scalar coordinates into dimensions.
-                dims_to_expand = [k for k in iter_coords if k not in database.dims]
-                if dims_to_expand:
-                    database = database.expand_dims(dims_to_expand)
-
+                database = database.assign_coords(
+                    water_level=water_level,
+                    water_depth=water_depth,
+                    forward_speed=forward_speed,
+                )
+                database = database.expand_dims(["water_level", "water_depth", "forward_speed"])
                 all_datasets.append(database)
 
     if not all_datasets:
