@@ -217,12 +217,25 @@ def process_all_cases_for_one_stl(
     logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
     boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)
 
+    expand_dims = []
+    if len(water_levels) > 1:
+        expand_dims.append("water_level")
+    if len(water_depths) > 1:
+        expand_dims.append("water_depth")
+    if len(forwards_speeds) > 1:
+        expand_dims.append("forwards_speeds")
+
     all_datasets = []
     for water_level in water_levels:
         for water_depth in water_depths:
             for forward_speed in forwards_speeds:
+                if len(forwards_speeds) > 1 and 0 in forwards_speeds:
+                    fw = forward_speed if forward_speed > 0 else 1e-10
+                else:
+                    fw = forward_speed
+
                 logger.info(
-                    f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={forward_speed}"
+                    f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={fw}"
                 )
                 database = make_database(
                     body=boat,
@@ -230,15 +243,15 @@ def process_all_cases_for_one_stl(
                     wave_directions=wave_directions,
                     water_level=water_level,
                     water_depth=water_depth,
-                    forward_speed=forward_speed,
+                    forward_speed=fw,
                 )
 
                 database = database.assign_coords(
                     water_level=water_level,
                     water_depth=water_depth,
-                    forward_speed=forward_speed,
+                    forward_speed=fw,
                 )
-                database = database.expand_dims(["water_level", "water_depth", "forward_speed"])
+                database = database.expand_dims(expand_dims)
                 all_datasets.append(database)
 
     if not all_datasets:
