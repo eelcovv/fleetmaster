@@ -8,7 +8,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import trimesh
-from capytaine.io.xarray import export_dataset
+import xarray as xr
 
 from .settings import SimulationSettings
 
@@ -54,6 +54,19 @@ def make_database(
     results = [bem_solver.solve(problem) for problem in problems]
 
     database = cpt.assemble_dataset(results)
+
+    # Rename phony dimensions that might be created by capytaine.
+    # Based on user feedback, we expect phony_dim_0, 1, and 2.
+    rename_map = {
+        "phony_dim_0": "i",  # Likely a 3x3 matrix row
+        "phony_dim_1": "j",  # Likely a 3x3 matrix column
+        "phony_dim_2": "mesh_nodes",  # Likely a mesh-related dimension
+    }
+    # Filter for dims that actually exist in the dataset to avoid errors
+    dims_to_rename = {k: v for k, v in rename_map.items() if k in database.dims}
+    if dims_to_rename:
+        logger.info(f"Renaming phony dimensions: {dims_to_rename}")
+        database = database.rename_dims(dims_to_rename)
 
     for coord_name, coord_data in database.coords.items():
         if isinstance(coord_data.dtype, pd.CategoricalDtype):
@@ -175,7 +188,6 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
     logger.info(fmt_str % ("Water depth(s) [m]", water_depths))
     logger.info(fmt_str % ("Water level(s) [m]", water_levels))
     logger.info(fmt_str % ("Forward speed(s) [m/s]", forwards_speeds))
-    logger.info(fmt_str % ("Export to NetCDF", settings.export_to_netcdf))
 
     process_all_cases_for_one_stl(
         stl_file=stl_file,
@@ -187,7 +199,6 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
         lid=lid,
         grid_symmetry=grid_symmetry,
         output_file=output_file,
-        export_to_netcdf=settings.export_to_netcdf,
     )
 
 
@@ -201,16 +212,18 @@ def process_all_cases_for_one_stl(
     lid: bool,
     grid_symmetry: bool,
     output_file: Path,
-    export_to_netcdf: bool = False,
 ):
     group_name = Path(stl_file).stem
     logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
     boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)
 
+    all_datasets = []
     for water_level in water_levels:
         for water_depth in water_depths:
             for forward_speed in forwards_speeds:
-                logger.info("Starting BEM calculations...")
+                logger.info(
+                    f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={forward_speed}"
+                )
                 database = make_database(
                     body=boat,
                     omegas=wave_frequencies,
@@ -220,27 +233,25 @@ def process_all_cases_for_one_stl(
                     forward_speed=forward_speed,
                 )
 
-                logger.debug(
-                    f"Writing database for water depth = {water_depth}, water level = {water_level} and forward speed = {forward_speed}"
-                )
-                database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
+                database = database.assign_coords(
+                    water_level=water_level,
+                    water_depth=water_depth,
+                    forward_speed=forward_speed,
+                ).expand_dims(["water_level", "water_depth", "forward_speed"])
+                all_datasets.append(database)
+
+    if not all_datasets:
+        logger.warning("No datasets were generated. Nothing to write to HDF5.")
+        return
+
+    logger.info("Combining all datasets into a single xarray.Dataset...")
+    combined_dataset = xr.combine_by_coords(all_datasets)
+
+    logger.debug(f"Writing combined database to group '{group_name}'")
+    combined_dataset.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
 
     _write_geometric_data_to_hdf5(output_file, group_name, stl_file)
     logger.debug(f"Successfully wrote all data for {stl_file} to HDF5.")
-
-    # --- Handle optional legacy output ---
-    if export_to_netcdf:
-        logger.info("Exporting to individual NetCDF and Tecplot files as requested.")
-        output_dir = output_file.parent
-        nc_file = output_dir / f"{group_name}.nc"
-        tec_dir = output_dir / f"{group_name}_tecplot"
-        tec_dir.mkdir(exist_ok=True)
-
-        logger.info(f"Writing result as NetCDF file: {nc_file}")
-        database.to_netcdf(nc_file)
-
-        logger.info(f"Writing result to Tecplot directory: {tec_dir}")
-        export_dataset(str(tec_dir), database, format="nemoh")
 
 
 def run_simulation_batch(settings: SimulationSettings) -> None:

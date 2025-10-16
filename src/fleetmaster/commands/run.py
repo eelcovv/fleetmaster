@@ -1,10 +1,12 @@
 import glob
 import logging
+import re
 import types
 from collections.abc import Callable
 from typing import Any, TypeVar, Union, get_args, get_origin
 
 import click
+import numpy as np
 import yaml
 from pydantic import BaseModel, ValidationError
 
@@ -34,15 +36,82 @@ def _expand_stl_files(stl_files: tuple[str, ...]) -> list[str]:
     return expanded_files
 
 
-def _process_cli_args(kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Process CLI arguments, filtering None values and converting tuples."""
-    cli_args = {k: v for k, v in kwargs.items() if v is not None and v != ()}
-    for key, value in cli_args.items():
-        if isinstance(value, tuple):
+def _parse_range_string(range_str: str) -> list[float] | None:
+    """Parses a string like 'start:stop:step' into a list of numbers."""
+    if ":" not in range_str:
+        return None
+
+    parts = [p.strip() for p in range_str.split(":")]
+    if len(parts) > 3:
+        return None  # Invalid format
+
+    try:
+        # Convert parts to float, providing defaults for missing parts
+        start = float(parts[0]) if parts[0] else 0.0
+        stop = float(parts[1]) if len(parts) > 1 and parts[1] else None
+        step = float(parts[2]) if len(parts) > 2 and parts[2] else 1.0
+
+        if stop is None:
+            return None  # Stop is mandatory for a range
+
+        return np.arange(start, stop, step).tolist()
+
+    except (ValueError, TypeError):
+        return None
+
+
+def _process_cli_args(kwargs: dict[str, Any], model: type[BaseModel]) -> dict[str, Any]:
+    """Process CLI arguments, filtering None values and parsing complex list inputs."""
+    cli_args = {k: v for k, v in kwargs.items() if v is not None and v != () and v != ""}
+
+    for key, value_tuple in cli_args.items():
+        field = model.model_fields.get(key)
+        if not field:
+            continue
+
+        # Check if the model field is a list type
+        field_type = field.annotation
+        origin = get_origin(field_type)
+        if origin in (types.UnionType, Union):
+            args = get_args(field_type)
+            non_none_types = [t for t in args if t is not type(None)]
+            field_type = non_none_types[0] if non_none_types else str
+            origin = get_origin(field_type)
+
+        if not (origin is list and isinstance(value_tuple, tuple)):
+            continue
+
+        # This option is a list type, and we have a tuple of strings from Click
+        final_values: list[Any] = []
+        list_item_type = get_args(field_type)[0] if get_args(field_type) else str
+
+        for value_str in value_tuple:
+            # 1. Try to parse as a range
+            range_vals = _parse_range_string(value_str)
+            if range_vals is not None:
+                final_values.extend(range_vals)
+                continue
+
+            # 2. Try to parse as a delimited string
+            if re.search(r"[,;\s]", value_str):
+                split_values = [v for v in re.split(r"[,;\s]+", value_str.strip()) if v]
+                try:
+                    final_values.extend([list_item_type(i) for i in split_values])
+                except (ValueError, TypeError):
+                    logger.warning(f"Could not convert all values in '{value_str}' for '{key}'.")
+                    final_values.extend(split_values)  # Add as strings on failure
+                continue
+
+            # 3. Treat as a single value
             try:
-                cli_args[key] = [float(i) for i in value]
+                final_values.append(list_item_type(value_str))
             except (ValueError, TypeError):
-                cli_args[key] = list(value)
+                logger.warning(f"Could not convert value '{value_str}' for '{key}'.")
+                final_values.append(value_str)
+
+        # De-duplicate values while preserving order
+        cli_args[key] = list(dict.fromkeys(final_values))
+
     return cli_args
 
 
@@ -68,7 +137,7 @@ def _load_and_validate_settings(
     elif expanded_stl_files:
         config["stl_files"] = expanded_stl_files
 
-    cli_args = _process_cli_args(kwargs)
+    cli_args = _process_cli_args(kwargs, SimulationSettings)  # Pass model here
     config.update(cli_args)
 
     try:
@@ -94,43 +163,34 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
                 continue
 
             option_name_base = name.replace("_", "-")
+            option_name = f"--{option_name_base}"
             raw_option_type = field.annotation
-            is_bool = False
 
-            # Determine the base type, especially for unions like `bool | None`
+            # Determine the base type, especially for unions like `list[float] | None`
             option_type = raw_option_type
-            if get_origin(raw_option_type) in (types.UnionType, Union):
+            origin = get_origin(raw_option_type)
+            if origin in (types.UnionType, Union):
                 args = get_args(raw_option_type)
                 non_none_types = [t for t in args if t is not type(None)]
                 option_type = non_none_types[0] if non_none_types else str
+                origin = get_origin(option_type)  # Re-check origin for types like list[float]
 
-            if option_type is bool:
-                is_bool = True
+            is_list = origin is list
+            is_bool = option_type is bool
+
+            help_text = field.description or f"Set the {name}."
 
             if is_bool:
-                # For booleans, create a toggle flag like --lid/--no-lid.
-                # Click automatically handles this, passing True for --lid, False for --no-lid.
-                # `default=None` means if neither is passed, the value is None,
-                # allowing Pydantic to use its own default.
                 option_name = f"--{option_name_base}/--no-{option_name_base}"
-                f = click.option(
-                    option_name,
-                    default=None,
-                    help=field.description or f"Toggle for the '{name}' setting.",
-                )(f)
+                f = click.option(option_name, default=None, help=help_text)(f)
+            elif is_list:
+                help_text += (
+                    " Can be specified multiple times. Accepts single values, comma/space-separated strings, or "
+                    "Python-like ranges (e.g., '1:11:2')."
+                )
+                f = click.option(option_name, type=str, default=None, help=help_text, multiple=True)(f)
             else:
-                # Existing logic for other types
-                option_name = f"--{option_name_base}"
-                # For lists, Click expects to handle multiple values, but the type of each value
-                # should be specified. We'll assume string and convert later.
-                click_type = str if get_origin(option_type) is list else option_type
-                f = click.option(
-                    option_name,
-                    type=click_type,
-                    default=None,  # Default to None to distinguish not set vs. set to default
-                    help=field.description or f"Set the {name}.",
-                    multiple=get_origin(option_type) is list,
-                )(f)
+                f = click.option(option_name, type=option_type, default=None, help=help_text)(f)
         return f
 
     return decorator
