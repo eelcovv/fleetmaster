@@ -1,5 +1,5 @@
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from fleetmaster.core.exceptions import (
     LidAndSymmetryEnabledError,
@@ -23,6 +23,7 @@ class SimulationSettings(BaseModel):
     water_depth: float | list[float] = np.inf
     water_level: float | list[float] = 0.0
 
+    @field_validator("forward_speed")
     def speed_must_be_non_negative(cls, v: float | list[float]) -> float | list[float]:
         """Validate that forward speed is non-negative."""
         if isinstance(v, list):
@@ -32,12 +33,14 @@ class SimulationSettings(BaseModel):
             raise NegativeForwardSpeedError()
         return v
 
+    @field_validator("wave_periods")
     def periods_must_be_positive(cls, v: list[float]) -> list[float]:
         """Validate that wave periods are positive."""
         if any(p <= 0 for p in v):
             raise NonPositivePeriodError()
         return v
 
+    @model_validator(mode="after")
     def check_lid_and_symmetry(self) -> "SimulationSettings":
         """Validate that lid and grid_symmetry are not both enabled."""
         if self.lid and self.grid_symmetry:
