@@ -32,6 +32,9 @@ class SimulationSettings(BaseModel):
     drafts: list[float] | None = Field(
         default=None, description="A list of draft values to apply as Z-translations to a base mesh."
     )
+    combine_cases: bool = Field(
+        default=False, description="Combine all calculated cases for a single STL into one multi-dimensional dataset."
+    )
 
     # field validator checks the value of one specific field inmediately
     @field_validator("forward_speed")
