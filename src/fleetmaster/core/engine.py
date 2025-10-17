@@ -262,7 +262,7 @@ def process_all_cases_for_one_stl(
     grid_symmetry: bool,
     output_file: Path,
     update_cases: bool = False,
-):
+) -> None:
     mesh_name = Path(stl_file).stem
     boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)
 

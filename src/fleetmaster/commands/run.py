@@ -68,7 +68,7 @@ def _parse_range_string(range_str: str) -> list[float] | None:
         if stop is None:
             return None  # Stop is mandatory for a range
 
-        return np.arange(start, stop, step).tolist()
+        return [float(x) for x in np.arange(start, stop, step)]
 
     except (ValueError, TypeError):
         return None
