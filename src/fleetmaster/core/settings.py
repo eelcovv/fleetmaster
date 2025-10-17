@@ -20,8 +20,8 @@ class SimulationSettings(BaseModel):
     stl_files: list[str] = Field(description="Path to the STL mesh files.")
     output_directory: str | None = Field(default=None, description="Directory to save the output files.")
     output_hdf5_file: str = Field(default="results.hdf5", description="Path to the HDF5 output file.")
-    wave_periods: float | list[float] = Field(default=[5, 10, 15, 20])
-    wave_directions: float | list[float] = Field(default=[0, 45, 90, 135, 180])
+    wave_periods: float | list[float] = Field(default=[5.0, 10, 15, 20])
+    wave_directions: float | list[float] = Field(default=[0.0, 45, 90, 135, 180])
     forward_speed: float | list[float] = 0.0
     lid: bool = True
     grid_symmetry: bool = False
