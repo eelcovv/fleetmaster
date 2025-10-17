@@ -10,7 +10,7 @@ import pandas as pd
 import trimesh
 import xarray as xr
 
-from .settings import SimulationSettings
+from .settings import MESH_GROUP_NAME, SimulationSettings
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,9 @@ def make_database(
     """Create a dataset of BEM results for a given body and conditions."""
     bem_solver = cpt.BEMSolver()
     problems: list[Any] = []
-    logger.debug("Collecting problems")
+    logger.debug(f"Solving for water_depth={water_depth} water_level={water_level} forward_speed={forward_speed}")
     for omega in omegas:
+        logger.debug(f"RadiationProblem and DiffractionProblem for omega {omega}")
         problems.extend(
             cpt.RadiationProblem(
                 omega=omega,
@@ -40,6 +41,7 @@ def make_database(
             for dof in body.dofs
         )
         for wave_direction in wave_directions:
+            logger.debug(f"DiffractionProblem for wave_direction {wave_direction} ")
             problems.append(
                 cpt.DiffractionProblem(
                     omega=omega,
@@ -133,9 +135,9 @@ def _write_geometric_data_to_hdf5(output_file: Path, group_name: str, stl_file: 
     }
     inertia_tensor_data = mesh_for_props.moment_inertia
 
-    logger.debug(f"Appending geometric data to group '{group_name}'...")
+    logger.debug(f"Appending geometric data to group '{MESH_GROUP_NAME}'...")
     with h5py.File(output_file, "a") as f:
-        group = f.require_group(group_name)
+        group = f.require_group(MESH_GROUP_NAME)
 
         for key, value in fingerprint_attrs.items():
             group.attrs[key] = value
@@ -217,14 +219,6 @@ def process_all_cases_for_one_stl(
     logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
     boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)
 
-    expand_dims = []
-    if len(water_levels) > 1:
-        expand_dims.append("water_level")
-    if len(water_depths) > 1:
-        expand_dims.append("water_depth")
-    if len(forwards_speeds) > 1:
-        expand_dims.append("forwards_speed")
-
     all_datasets = []
     for water_level in water_levels:
         for water_depth in water_depths:
@@ -246,12 +240,6 @@ def process_all_cases_for_one_stl(
                     forward_speed=fw,
                 )
 
-                database = database.assign_coords(
-                    water_level=water_level,
-                    water_depth=water_depth,
-                    forward_speed=fw,
-                )
-                database = database.expand_dims(expand_dims)
                 all_datasets.append(database)
 
     if not all_datasets:
@@ -259,7 +247,7 @@ def process_all_cases_for_one_stl(
         return
 
     logger.info("Combining all datasets into a single xarray.Dataset...")
-    combined_dataset = xr.combine_by_coords(all_datasets)
+    combined_dataset = xr.combine_by_coords(all_datasets, combine_attrs="drop_conflicts")
 
     logger.debug(f"Writing combined database to group '{group_name}'")
     combined_dataset.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")

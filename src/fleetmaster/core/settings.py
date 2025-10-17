@@ -7,6 +7,8 @@ from fleetmaster.core.exceptions import (
     NonPositivePeriodError,
 )
 
+MESH_GROUP_NAME = "meshes"
+
 
 class SimulationSettings(BaseModel):
     """Defines all possible settings for a simulation."""
