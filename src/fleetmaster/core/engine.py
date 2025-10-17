@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -120,38 +121,29 @@ def add_mesh_to_database(output_file: Path, stl_file: str, overwrite: bool = Fal
     """
     Adds a mesh and its geometric properties to the HDF5 database under the MESH_GROUP_NAME.
 
-    Checks if the mesh already exists. If it does, it compares the mesh data.
+    Checks if the mesh already exists by comparing SHA256 hashes.
     If the data is different, it will either raise a warning or overwrite if `overwrite` is True.
     """
     mesh_name = Path(stl_file).stem
     mesh_group_path = f"{MESH_GROUP_NAME}/{mesh_name}"
-    new_mesh = trimesh.load_mesh(stl_file)
+
+    # Read new file content and compute hash first
+    with open(stl_file, "rb") as stl_f:
+        new_stl_content = stl_f.read()
+    new_hash = hashlib.sha256(new_stl_content).hexdigest()
 
     with h5py.File(output_file, "a") as f:
         if mesh_group_path in f:
-            logger.debug(f"Mesh '{mesh_name}' already exists in the database. Checking for consistency.")
-            item = f.get(mesh_group_path)
-            if not isinstance(item, h5py.Group):
-                msg = f"Database-integriteitsfout: '{mesh_group_path}' is geen Group."
-                raise TypeError(msg)
-            existing_group = item
+            existing_group = f[mesh_group_path]
+            stored_hash = existing_group.attrs.get("sha256")
 
-            stl_dataset = existing_group.get("stl_content")
-            if not isinstance(stl_dataset, h5py.Dataset):
-                msg = f"Database-integriteitsfout: '{mesh_group_path}/stl_content' is geen Dataset."
-                raise TypeError(msg)
-            existing_stl_content = stl_dataset[()]
-
-            with open(stl_file, "rb") as stl_f:
-                new_stl_content = stl_f.read()
-
-            if new_stl_content == existing_stl_content:
-                logger.info(f"Mesh '{mesh_name}' is identical to the existing one. Skipping.")
+            if stored_hash == new_hash:
+                logger.info(f"Mesh '{mesh_name}' has the same SHA256 hash. Skipping.")
                 return
 
             if not overwrite:
                 logger.warning(
-                    f"Mesh '{mesh_name}' is different from the one in the database. "
+                    f"Mesh '{mesh_name}' is different from the one in the database (SHA256 mismatch). "
                     "Use --overwrite-meshes to overwrite."
                 )
                 return
@@ -162,6 +154,8 @@ def add_mesh_to_database(output_file: Path, stl_file: str, overwrite: bool = Fal
         logger.debug(f"Adding mesh '{mesh_name}' to group '{MESH_GROUP_NAME}'...")
         group = f.create_group(mesh_group_path)
 
+        # Calculate geometric properties from the new mesh content
+        new_mesh = trimesh.load_mesh(stl_file)
         fingerprint_attrs = {
             "volume": new_mesh.volume,
             "cog_x": new_mesh.center_mass[0],
@@ -175,12 +169,13 @@ def add_mesh_to_database(output_file: Path, stl_file: str, overwrite: bool = Fal
             group.attrs[key] = value
         logger.debug(f"  - Wrote {len(fingerprint_attrs)} fingerprint attributes.")
 
+        # Add hash as an attribute
+        group.attrs["sha256"] = new_hash
+
         group.create_dataset("inertia_tensor", data=new_mesh.moment_inertia)
         logger.debug("  - Wrote dataset: inertia_tensor")
 
-        with open(stl_file, "rb") as stl_f:
-            stl_data = stl_f.read()
-        group.create_dataset("stl_content", data=memoryview(stl_data))
+        group.create_dataset("stl_content", data=memoryview(new_stl_content))
         logger.debug("  - Wrote dataset: stl_content")
 
 
@@ -198,7 +193,7 @@ def _generate_case_group_name(mesh_name: str, water_depth: float, water_level: f
     wd = _format_value_for_name(water_depth)
     wl = _format_value_for_name(water_level)
     fs = _format_value_for_name(forward_speed)
-    return f"{mesh_name}_wd{wd}_wl{wl}_fs{fs}"
+    return f"{mesh_name}_wd_{wd}_wl_{wl}_fs_{fs}"
 
 
 def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file: Path) -> None:
