@@ -207,11 +207,11 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
 
     # --- Setup simulation parameters ---
     wave_periods = settings.wave_periods if isinstance(settings.wave_periods, list) else [settings.wave_periods]
-    wave_frequencies = 2 * np.pi / np.array(wave_periods)
+    wave_frequencies = (2 * np.pi / np.array(wave_periods)).tolist()
     wave_directions = (
         settings.wave_directions if isinstance(settings.wave_directions, list) else [settings.wave_directions]
     )
-    wave_directions = np.deg2rad(wave_directions)
+    wave_directions = np.deg2rad(wave_directions).tolist()
     water_depths = settings.water_depth if isinstance(settings.water_depth, list) else [settings.water_depth]
     water_levels = settings.water_level if isinstance(settings.water_level, list) else [settings.water_level]
 
