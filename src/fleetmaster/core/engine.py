@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -320,7 +321,9 @@ def process_all_cases_for_one_stl(
 def run_simulation_batch(settings: SimulationSettings) -> None:
     """
     Runs a batch of Capytaine simulations and saves all results to a single HDF5 file.
-    Optionally, also exports results to individual NetCDF files.
+
+    If `settings.drafts` is provided, it generates new meshes by translating a single
+    base STL file for each draft. Otherwise, it processes the provided list of STL files.
 
     Args:
         settings: A SimulationSettings object with all necessary parameters.
@@ -332,7 +335,46 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
         logger.warning(e)
         return
 
-    for stl_file in settings.stl_files:
-        _process_single_stl(stl_file, settings, output_file)
+    if settings.drafts:
+        if len(settings.stl_files) != 1:
+            msg = f"When using --drafts, exactly one base STL file must be provided, but {len(settings.stl_files)} were given."
+            logger.error(msg)
+            raise ValueError(msg)
+
+        base_stl_file = settings.stl_files[0]
+        base_mesh_name = Path(base_stl_file).stem
+        logger.info(f"Starting draft generation mode for base mesh: {base_stl_file}")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            logger.debug(f"Using temporary directory for generated meshes: {temp_dir}")
+            generated_files: list[str] = []
+
+            for draft in settings.drafts:
+                logger.info(f"Generating mesh for draft: {draft}")
+                try:
+                    mesh = trimesh.load_mesh(base_stl_file)
+                    transform = trimesh.transformations.translation_matrix([0, 0, -draft])
+                    mesh.apply_transform(transform)
+
+                    draft_str = _format_value_for_name(draft)
+                    new_mesh_name = f"{base_mesh_name}_draft_{draft_str}"
+                    new_stl_path = Path(temp_dir) / f"{new_mesh_name}.stl"
+
+                    mesh.export(new_stl_path)
+                    generated_files.append(str(new_stl_path))
+                    logger.debug(f"Successfully generated mesh: {new_stl_path}")
+                except Exception:
+                    logger.exception(f"Failed to generate mesh for draft {draft}")
+                    continue  # Continue to the next draft
+
+            # Process the newly generated files
+            for stl_file in generated_files:
+                _process_single_stl(stl_file, settings, output_file)
+
+    else:
+        # Standard mode: process files as they are
+        logger.info("Starting standard processing for provided STL files.")
+        for stl_file in settings.stl_files:
+            _process_single_stl(stl_file, settings, output_file)
 
     logger.info(f"✅ Simulation batch finished. Results saved to {output_file}")

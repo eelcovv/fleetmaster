@@ -147,14 +147,30 @@ def _load_and_validate_settings(
 ) -> SimulationSettings:
     """Load settings from file or CLI, merge them, and validate."""
     expanded_stl_files = _expand_stl_files(stl_files)
+    cli_args = _process_cli_args(kwargs, SimulationSettings)
 
-    if not settings_file and not expanded_stl_files:
+    # --- Validation of input combinations ---
+    has_settings_file = bool(settings_file)
+    has_stl_files = bool(expanded_stl_files)
+    has_drafts = "drafts" in cli_args
+
+    if has_settings_file and (has_stl_files or has_drafts):
+        err_msg = "A settings file cannot be combined with --stl-files or --drafts."
+        raise click.UsageError(err_msg)
+
+    if has_drafts and not has_stl_files:
+        err_msg = "--drafts requires a single base STL file to be provided."
+        raise click.UsageError(err_msg)
+
+    if has_drafts and len(expanded_stl_files) > 1:
+        err_msg = f"--drafts can only be used with a single base STL file, but {len(expanded_stl_files)} were found."
+        raise click.UsageError(err_msg)
+
+    if not has_settings_file and not has_stl_files:
         err_msg = "Either a settings file or at least one STL file must be provided."
         raise click.UsageError(err_msg)
-    if settings_file and expanded_stl_files:
-        err_msg = "Provide either a settings file or STL files, not both."
-        raise click.UsageError(err_msg)
 
+    # --- Configuration Loading ---
     config: dict[str, Any] = {}
     if settings_file:
         with open(settings_file) as f:
@@ -162,7 +178,6 @@ def _load_and_validate_settings(
     elif expanded_stl_files:
         config["stl_files"] = expanded_stl_files
 
-    cli_args = _process_cli_args(kwargs, SimulationSettings)  # Pass model here
     config.update(cli_args)
 
     try:
@@ -232,7 +247,7 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
                 option_name = f"--{option_name_base}"
                 help_text += (
                     " Can be specified multiple times. Accepts single values, comma/space-separated strings, or "
-                    "Python-like ranges (e.g., '1:11:2')."
+                    "Python-like ranges ('start:stop:step')."
                 )
                 f = click.option(option_name, type=str, default=None, help=help_text, multiple=True)(f)
             else:

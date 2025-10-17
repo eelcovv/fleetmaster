@@ -20,8 +20,8 @@ class SimulationSettings(BaseModel):
     stl_files: list[str] = Field(description="Path to the STL mesh files.")
     output_directory: str | None = Field(default=None, description="Directory to save the output files.")
     output_hdf5_file: str = Field(default="results.hdf5", description="Path to the HDF5 output file.")
-    wave_periods: float | list[float] = Field(default=[5.0, 10, 15, 20])
-    wave_directions: float | list[float] = Field(default=[0.0, 45, 90, 135, 180])
+    wave_periods: float | list[float] = Field(default=[5.0, 10.0, 15.0, 20.0])
+    wave_directions: float | list[float] = Field(default=[0.0, 45.0, 90.0, 135.0, 180.0])
     forward_speed: float | list[float] = 0.0
     lid: bool = True
     grid_symmetry: bool = False
@@ -29,6 +29,9 @@ class SimulationSettings(BaseModel):
     water_level: float | list[float] = 0.0
     overwrite_meshes: bool = Field(default=False, description="Overwrite existing meshes in the database.")
     update_cases: bool = Field(default=False, description="Force update of existing simulation cases in the database.")
+    drafts: list[float] | None = Field(
+        default=None, description="A list of draft values to apply as Z-translations to a base mesh."
+    )
 
     # field validator checks the value of one specific field inmediately
     @field_validator("forward_speed")
