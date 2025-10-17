@@ -116,12 +116,12 @@ def _prepare_capytaine_body(stl_file: str, lid: bool, grid_symmetry: bool) -> An
     return boat
 
 
-def add_mesh_to_database(output_file: Path, stl_file: str, force: bool = False) -> None:
+def add_mesh_to_database(output_file: Path, stl_file: str, overwrite: bool = False) -> None:
     """
     Adds a mesh and its geometric properties to the HDF5 database under the MESH_GROUP_NAME.
 
     Checks if the mesh already exists. If it does, it compares the mesh data.
-    If the data is different, it will either raise a warning or overwrite if `force` is True.
+    If the data is different, it will either raise a warning or overwrite if `overwrite` is True.
     """
     mesh_name = Path(stl_file).stem
     mesh_group_path = f"{MESH_GROUP_NAME}/{mesh_name}"
@@ -140,13 +140,14 @@ def add_mesh_to_database(output_file: Path, stl_file: str, force: bool = False) 
                 logger.info(f"Mesh '{mesh_name}' is identical to the existing one. Skipping.")
                 return
 
-            if not force:
+            if not overwrite:
                 logger.warning(
-                    f"Mesh '{mesh_name}' is different from the one in the database. Use --force to overwrite."
+                    f"Mesh '{mesh_name}' is different from the one in the database. "
+                    "Use --overwrite-meshes to overwrite."
                 )
                 return
 
-            logger.warning(f"Overwriting existing mesh '{mesh_name}' as --force is specified.")
+            logger.warning(f"Overwriting existing mesh '{mesh_name}' as --overwrite-meshes is specified.")
             del f[mesh_group_path]
 
         logger.debug(f"Adding mesh '{mesh_name}' to group '{MESH_GROUP_NAME}'...")
