@@ -11,7 +11,11 @@ MESH_GROUP_NAME = "meshes"
 
 
 class SimulationSettings(BaseModel):
-    """Defines all possible settings for a simulation."""
+    """Defines all possible settings for a simulation.
+
+    The 'description' for each field is used by the CLI in `run.py` to
+    automatically generate the help text for its corresponding command-line option.
+    """
 
     stl_files: list[str] = Field(description="Path to the STL mesh files.")
     output_directory: str | None = Field(default=None, description="Directory to save the output files.")
