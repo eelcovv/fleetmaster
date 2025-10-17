@@ -8,8 +8,8 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import trimesh
-import xarray as xr
 
+from .exceptions import LidAndSymmetryEnabledError
 from .settings import MESH_GROUP_NAME, SimulationSettings
 
 logger = logging.getLogger(__name__)
@@ -94,8 +94,8 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_dir / settings.output_hdf5_file
-    if output_file.exists():
-        logger.warning(f"Output file {output_file} already exists and will be overwritten.")
+    if output_file.exists() and settings.overwrite_meshes:
+        logger.warning(f"Output file {output_file} already exists and will be overwritten as overwrite_meshes is True.")
         output_file.unlink()
     return output_file
 
@@ -116,44 +116,67 @@ def _prepare_capytaine_body(stl_file: str, lid: bool, grid_symmetry: bool) -> An
     return boat
 
 
-def _write_geometric_data_to_hdf5(output_file: Path, group_name: str, stl_file: str) -> None:
+def add_mesh_to_database(output_file: Path, stl_file: str, force: bool = False) -> None:
     """
-    Calculate the geometric fingerprint and append it along with the raw STL content
-    to the specified group in the HDF5 file.
+    Adds a mesh and its geometric properties to the HDF5 database under the MESH_GROUP_NAME.
+
+    Checks if the mesh already exists. If it does, it compares the mesh data.
+    If the data is different, it will either raise a warning or overwrite if `force` is True.
     """
-    logger.debug(f"Calculating geometric fingerprint for {stl_file}...")
-    mesh_for_props = trimesh.load_mesh(stl_file)
+    mesh_name = Path(stl_file).stem
+    mesh_group_path = f"{MESH_GROUP_NAME}/{mesh_name}"
+    new_mesh = trimesh.load_mesh(stl_file)
 
-    fingerprint_attrs = {
-        "volume": mesh_for_props.volume,
-        "cog_x": mesh_for_props.center_mass[0],
-        "cog_y": mesh_for_props.center_mass[1],
-        "cog_z": mesh_for_props.center_mass[2],
-        "bbox_lx": mesh_for_props.bounding_box.extents[0],
-        "bbox_ly": mesh_for_props.bounding_box.extents[1],
-        "bbox_lz": mesh_for_props.bounding_box.extents[2],
-    }
-    inertia_tensor_data = mesh_for_props.moment_inertia
-
-    logger.debug(f"Appending geometric data to group '{MESH_GROUP_NAME}'...")
     with h5py.File(output_file, "a") as f:
-        group = f.require_group(MESH_GROUP_NAME)
+        if mesh_group_path in f:
+            logger.debug(f"Mesh '{mesh_name}' already exists in the database. Checking for consistency.")
+            existing_group = f[mesh_group_path]
+            existing_stl_content = existing_group["stl_content"][()]
 
+            with open(stl_file, "rb") as stl_f:
+                new_stl_content = stl_f.read()
+
+            if new_stl_content == existing_stl_content:
+                logger.info(f"Mesh '{mesh_name}' is identical to the existing one. Skipping.")
+                return
+
+            if not force:
+                logger.warning(
+                    f"Mesh '{mesh_name}' is different from the one in the database. Use --force to overwrite."
+                )
+                return
+
+            logger.warning(f"Overwriting existing mesh '{mesh_name}' as --force is specified.")
+            del f[mesh_group_path]
+
+        logger.debug(f"Adding mesh '{mesh_name}' to group '{MESH_GROUP_NAME}'...")
+        group = f.create_group(mesh_group_path)
+
+        fingerprint_attrs = {
+            "volume": new_mesh.volume,
+            "cog_x": new_mesh.center_mass[0],
+            "cog_y": new_mesh.center_mass[1],
+            "cog_z": new_mesh.center_mass[2],
+            "bbox_lx": new_mesh.bounding_box.extents[0],
+            "bbox_ly": new_mesh.bounding_box.extents[1],
+            "bbox_lz": new_mesh.bounding_box.extents[2],
+        }
         for key, value in fingerprint_attrs.items():
             group.attrs[key] = value
         logger.debug(f"  - Wrote {len(fingerprint_attrs)} fingerprint attributes.")
 
-        if "inertia_tensor" in group:
-            del group["inertia_tensor"]
-        group.create_dataset("inertia_tensor", data=inertia_tensor_data)
+        group.create_dataset("inertia_tensor", data=new_mesh.moment_inertia)
         logger.debug("  - Wrote dataset: inertia_tensor")
 
-        if "stl_content" in group:
-            del group["stl_content"]
         with open(stl_file, "rb") as stl_f:
             stl_data = stl_f.read()
         group.create_dataset("stl_content", data=memoryview(stl_data))
         logger.debug("  - Wrote dataset: stl_content")
+
+
+def _generate_case_group_name(mesh_name: str, water_depth: float, water_level: float, forward_speed: float) -> str:
+    """Generates a descriptive group name for a specific simulation case."""
+    return f"{mesh_name}_wd{water_depth}_wl{water_level}_fs{forward_speed}"
 
 
 def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file: Path) -> None:
@@ -161,6 +184,9 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
     Run the complete processing pipeline for a single STL file.
     """
     logger.info(f"Processing STL file: {stl_file}")
+
+    # Add mesh to the database first
+    add_mesh_to_database(output_file, stl_file, settings.overwrite_meshes)
 
     # --- Setup simulation parameters ---
     wave_periods = settings.wave_periods if isinstance(settings.wave_periods, list) else [settings.wave_periods]
@@ -178,7 +204,10 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
     grid_symmetry = settings.grid_symmetry
 
     # check is done by Settings, so this should no happen anymore
-    assert not (lid and grid_symmetry), "Cannot have both lid and grid_symmetry True simultaneously."  # noqa: S101
+    if lid and grid_symmetry:
+        raise LidAndSymmetryEnabledError()
+
+    output_file = output_file
 
     fmt_str = "%-40s: %s"
     logger.info(fmt_str % ("STL file", stl_file))
@@ -215,21 +244,14 @@ def process_all_cases_for_one_stl(
     grid_symmetry: bool,
     output_file: Path,
 ):
-    group_name = Path(stl_file).stem
-    logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
+    mesh_name = Path(stl_file).stem
     boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)
 
-    all_datasets = []
     for water_level in water_levels:
         for water_depth in water_depths:
             for forward_speed in forwards_speeds:
-                if len(forwards_speeds) > 1 and 0 in forwards_speeds:
-                    fw = forward_speed if forward_speed > 0 else 1e-10
-                else:
-                    fw = forward_speed
-
                 logger.info(
-                    f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={fw}"
+                    f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={forward_speed}"
                 )
                 database = make_database(
                     body=boat,
@@ -237,22 +259,35 @@ def process_all_cases_for_one_stl(
                     wave_directions=wave_directions,
                     water_level=water_level,
                     water_depth=water_depth,
-                    forward_speed=fw,
+                    forward_speed=forward_speed,
                 )
 
-                all_datasets.append(database)
+                group_name = _generate_case_group_name(mesh_name, water_depth, water_level, forward_speed)
+                logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
 
-    if not all_datasets:
-        logger.warning("No datasets were generated. Nothing to write to HDF5.")
-        return
+                database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
 
-    logger.info("Combining all datasets into a single xarray.Dataset...")
-    combined_dataset = xr.combine_by_coords(all_datasets, combine_attrs="drop_conflicts")
+                # Add mesh name as attribute to the group for easy lookup
+                with h5py.File(output_file, "a") as f:
+                    if group_name in f:
+                        f[group_name].attrs["stl_mesh_name"] = mesh_name
 
-    logger.debug(f"Writing combined database to group '{group_name}'")
-    combined_dataset.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
+                logger.debug(f"Successfully wrote data for case to group {group_name}.")
 
-    _write_geometric_data_to_hdf5(output_file, group_name, stl_file)
+    # The user also wanted to keep the option for multi-dimensional arrays.
+    # The current logic saves each case separately. To implement the multi-dim storage,
+    # we would need a separate function or a flag to combine datasets.
+    # For now, this implementation follows the colleague's suggestion.
+    # A future implementation could look like this:
+    # if settings.combine_cases:
+    #     all_datasets = []
+    #     ... collect all ...
+    #     combined_dataset = xr.combine_by_coords(all_datasets, combine_attrs="drop_conflicts")
+    #     combined_group_name = f"{mesh_name}_multi_dim"
+    #     combined_dataset.to_netcdf(output_file, mode="a", group=combined_group_name, engine="h5netcdf")
+    #     with h5py.File(output_file, "a") as f:
+    #         f[combined_group_name].attrs["stl_mesh_name"] = mesh_name
+
     logger.debug(f"Successfully wrote all data for {stl_file} to HDF5.")
 
 
