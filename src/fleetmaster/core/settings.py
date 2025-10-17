@@ -24,6 +24,7 @@ class SimulationSettings(BaseModel):
     water_depth: float | list[float] = np.inf
     water_level: float | list[float] = 0.0
     overwrite_meshes: bool = Field(default=False, description="Overwrite existing meshes in the database.")
+    update_cases: bool = Field(default=False, description="Force update of existing simulation cases in the database.")
 
     # field validator checks the value of one specific field inmediately
     @field_validator("forward_speed")

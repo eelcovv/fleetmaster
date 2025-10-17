@@ -247,6 +247,7 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
         lid=lid,
         grid_symmetry=grid_symmetry,
         output_file=output_file,
+        update_cases=settings.update_cases,
     )
 
 
@@ -260,6 +261,7 @@ def process_all_cases_for_one_stl(
     lid: bool,
     grid_symmetry: bool,
     output_file: Path,
+    update_cases: bool = False,
 ):
     mesh_name = Path(stl_file).stem
     boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)
@@ -269,11 +271,13 @@ def process_all_cases_for_one_stl(
             for forward_speed in forwards_speeds:
                 group_name = _generate_case_group_name(mesh_name, water_depth, water_level, forward_speed)
 
-                # Check if the case already exists before running the expensive simulation
                 with h5py.File(output_file, "a") as f:
                     if group_name in f:
-                        logger.info(f"Case '{group_name}' already exists in the database. Skipping.")
-                        continue
+                        if not update_cases:
+                            logger.info(f"Case '{group_name}' already exists in the database. Skipping.")
+                            continue
+                        logger.info(f"Case '{group_name}' exists, but update_cases is True. Overwriting.")
+                        del f[group_name]
 
                 logger.info(
                     f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={forward_speed}"
@@ -290,7 +294,6 @@ def process_all_cases_for_one_stl(
                 logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
                 database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
 
-                # Add mesh name as attribute to the group for easy lookup
                 with h5py.File(output_file, "a") as f:
                     if group_name in f:
                         f[group_name].attrs["stl_mesh_name"] = mesh_name
