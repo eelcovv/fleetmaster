@@ -130,8 +130,17 @@ def add_mesh_to_database(output_file: Path, stl_file: str, overwrite: bool = Fal
     with h5py.File(output_file, "a") as f:
         if mesh_group_path in f:
             logger.debug(f"Mesh '{mesh_name}' already exists in the database. Checking for consistency.")
-            existing_group = f[mesh_group_path]
-            existing_stl_content = existing_group["stl_content"][()]
+            item = f.get(mesh_group_path)
+            if not isinstance(item, h5py.Group):
+                msg = f"Database-integriteitsfout: '{mesh_group_path}' is geen Group."
+                raise TypeError(msg)
+            existing_group = item
+
+            stl_dataset = existing_group.get("stl_content")
+            if not isinstance(stl_dataset, h5py.Dataset):
+                msg = f"Database-integriteitsfout: '{mesh_group_path}/stl_content' is geen Dataset."
+                raise TypeError(msg)
+            existing_stl_content = stl_dataset[()]
 
             with open(stl_file, "rb") as stl_f:
                 new_stl_content = stl_f.read()
