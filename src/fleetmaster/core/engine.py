@@ -184,9 +184,21 @@ def add_mesh_to_database(output_file: Path, stl_file: str, overwrite: bool = Fal
         logger.debug("  - Wrote dataset: stl_content")
 
 
+def _format_value_for_name(value: float) -> str:
+    """Formats a float for use in a group name."""
+    if value == np.inf:
+        return "inf"
+    if value == int(value):
+        return str(int(value))
+    return f"{value:.1f}"
+
+
 def _generate_case_group_name(mesh_name: str, water_depth: float, water_level: float, forward_speed: float) -> str:
     """Generates a descriptive group name for a specific simulation case."""
-    return f"{mesh_name}_wd{water_depth}_wl{water_level}_fs{forward_speed}"
+    wd = _format_value_for_name(water_depth)
+    wl = _format_value_for_name(water_level)
+    fs = _format_value_for_name(forward_speed)
+    return f"{mesh_name}_wd{wd}_wl{wl}_fs{fs}"
 
 
 def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file: Path) -> None:
