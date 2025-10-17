@@ -1,14 +1,16 @@
-"""Command-line interface (CLI) for Python build utilities.
+"""Command-line interface (CLI) for Fleetmaster.
 
-This module uses the `click` library to create a CLI group with commands for
-renaming wheel files and removing tarballs.
+This module provides the main entrypoint for the Fleetmaster CLI, a tool for
+running hydrodynamic simulations with Capytaine. It uses the `click` library
+to define the main command group and handles global options like version and
+verbosity.
 
 Functions:
-    cli(): CLI entrypoint that registers available commands.
+    cli(): The main CLI entrypoint that registers subcommands and sets up logging.
 
 Commands:
-    rename_wheel_files: Rename wheel files to match a standardized format.
-    remove_tarballs: Remove `.tar.gz` source distributions from the current directory.
+    run: Runs a batch of Capytaine simulations based on a settings file or CLI options.
+    gui: Launches the Fleetmaster graphical user interface (GUI).
 """
 
 import logging
@@ -25,7 +27,7 @@ logger = setup_general_logger()
 
 @click.group(
     context_settings={"ignore_unknown_options": False},
-    help="Register CLI tools for fleetmaster.",
+    help="A CLI for running hydrodynamic simulations with Fleetmaster.",
     invoke_without_command=True,
 )
 @click.version_option(
@@ -41,10 +43,11 @@ logger = setup_general_logger()
     help="Increase verbosity level. Use -v for info, -vv for debug.",
 )
 def cli(verbose: int) -> None:
-    """Register CLI tools for Python build utilities.
+    """
+    The main entrypoint for the Fleetmaster CLI.
 
-    This function is the entrypoint for the CLI. It adjusts the logging level based
-    on verbosity flags and registers all available subcommands.
+    This function configures the application's logging level based on the
+    --verbose flag and registers all available subcommands.
     """
     # Get the root logger of the package and set its level
     package_logger = logging.getLogger("fleetmaster")
@@ -58,21 +61,16 @@ def cli(verbose: int) -> None:
     package_logger.addHandler(handler)
     package_logger.propagate = False  # Prevent duplicate logging to the root logger
 
-    # These constants are not defined, let's define them for clarity
-    VERBOSITY_DEBUG, VERBOSITY_INFO, LOGLEVEL_DEBUG, LOGLEVEL_INFO, LOGLEVEL_DEFAULT = (
-        2,
-        1,
-        logging.DEBUG,
-        logging.INFO,
-        logging.WARNING,
-    )
+    # Define verbosity levels
+    VERBOSITY_DEBUG = 2
+    VERBOSITY_INFO = 1
 
     if verbose >= VERBOSITY_DEBUG:
-        log_level = LOGLEVEL_DEBUG
+        log_level = logging.DEBUG
     elif verbose == VERBOSITY_INFO:
-        log_level = LOGLEVEL_INFO
+        log_level = logging.INFO
     else:
-        log_level = LOGLEVEL_DEFAULT
+        log_level = logging.WARNING
 
     package_logger.setLevel(log_level)
     for h in package_logger.handlers:
