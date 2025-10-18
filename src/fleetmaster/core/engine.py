@@ -10,6 +10,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import trimesh
+import xarray as xr
 
 from .exceptions import LidAndSymmetryEnabledError
 from .settings import MESH_GROUP_NAME, SimulationSettings
@@ -249,6 +250,7 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
         grid_symmetry=grid_symmetry,
         output_file=output_file,
         update_cases=settings.update_cases,
+        combine_cases=settings.combine_cases,
     )
 
 
@@ -263,9 +265,12 @@ def process_all_cases_for_one_stl(
     grid_symmetry: bool,
     output_file: Path,
     update_cases: bool = False,
+    combine_cases: bool = False,
 ) -> None:
     mesh_name = Path(stl_file).stem
     boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)
+
+    all_datasets = []
 
     for water_level in water_levels:
         for water_depth in water_depths:
@@ -292,28 +297,28 @@ def process_all_cases_for_one_stl(
                     forward_speed=forward_speed,
                 )
 
-                logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
-                database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
+                if combine_cases:
+                    all_datasets.append(database)
+                else:
+                    logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
+                    database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
+                    with h5py.File(output_file, "a") as f:
+                        if group_name in f:
+                            f[group_name].attrs["stl_mesh_name"] = mesh_name
+                    logger.debug(f"Successfully wrote data for case to group {group_name}.")
 
-                with h5py.File(output_file, "a") as f:
-                    if group_name in f:
-                        f[group_name].attrs["stl_mesh_name"] = mesh_name
+    if combine_cases and all_datasets:
+        logger.info("Combining all calculated cases into a single multi-dimensional dataset.")
+        combined_dataset = xr.combine_by_coords(all_datasets, combine_attrs="drop_conflicts")
+        combined_group_name = f"{mesh_name}_multi_dim"
 
-                logger.debug(f"Successfully wrote data for case to group {group_name}.")
-
-    # The user also wanted to keep the option for multi-dimensional arrays.
-    # The current logic saves each case separately. To implement the multi-dim storage,
-    # we would need a separate function or a flag to combine datasets.
-    # For now, this implementation follows the colleague's suggestion.
-    # A future implementation could look like this:
-    # if settings.combine_cases:
-    #     all_datasets = []
-    #     ... collect all ...
-    #     combined_dataset = xr.combine_by_coords(all_datasets, combine_attrs="drop_conflicts")
-    #     combined_group_name = f"{mesh_name}_multi_dim"
-    #     combined_dataset.to_netcdf(output_file, mode="a", group=combined_group_name, engine="h5netcdf")
-    #     with h5py.File(output_file, "a") as f:
-    #         f[combined_group_name].attrs["stl_mesh_name"] = mesh_name
+        logger.info(f"Writing combined dataset to group '{combined_group_name}' in HDF5 file: {output_file}")
+        with h5py.File(output_file, "a") as f:
+            if combined_group_name in f:
+                del f[combined_group_name]
+        combined_dataset.to_netcdf(output_file, mode="a", group=combined_group_name, engine="h5netcdf")
+        with h5py.File(output_file, "a") as f:
+            f[combined_group_name].attrs["stl_mesh_name"] = mesh_name
 
     logger.debug(f"Successfully wrote all data for {stl_file} to HDF5.")
 
