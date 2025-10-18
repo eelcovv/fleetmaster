@@ -147,10 +147,71 @@ In case you want to add a quick launcher under `.vscode/launcher.json`, an examp
     ]
 ```
 
+### direnv
+
+If you are only using a Python virtual environment (without Nix), you can use `direnv` to activate it automatically.
+Create a `.envrc` file with the following content:
+
+```shell
+# Load the Python virtual environment if it exists
+if [ -d .venv ]; then
+  layout python .venv
+fi
+```
+
 ### linux
 
 To install in linux
 
 ### nixos
 
-To run the
+To run the this packagine in a nix os environment, use the flake below to activate your environment.:
+
+```nix
+{
+  description = "Development environment for the fleetmaster project";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = import nixpkgs { inherit system; };
+      in
+      {
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
+            # Python en package manager
+            python312
+            uv
+
+            # Core dependencies voor de GUI
+            vtk
+            qt6.full
+
+            # Essentiële libraries voor rendering en windowing
+            mesa
+            libglvnd
+            wayland
+            libxkbcommon
+            xorg.libX11
+            xorg.libXcursor
+            xorg.libXrandr
+            xorg.libXi
+            fontconfig
+            freetype
+            harfbuzz
+          ];
+        };
+      });
+}
+```
+
+Activate the flake with
+
+```
+
+```
