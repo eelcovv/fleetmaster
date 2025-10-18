@@ -7,68 +7,57 @@
 [![License](https://img.shields.io/github/license/eelcovv/fleetmaster)](https://img.shields.io/github/license/eelcovv/fleetmaster)
 
 A wrapper to run capytaine from theandline
+A CLI for running hydrodynamic simulations with Fleetmaster.
 
 - **Github repository**: <https://github.com/eelcovv/fleetmaster/>
 - **Documentation** <https://eelcovv.github.io/fleetmaster/>
 
-## Getting started with your project
+## Installation
 
-### 1. Create a New Repository
-
-First, create a repository on GitHub with the same name as this project, and then run the following commands:
+You can install `fleetmaster` from PyPI using pip (or any other PEP 517 compliant installer like uv):
 
 ```bash
-git init -b main
-git add .
-git commit -m "init commit"
-git remote add origin git@github.com:eelcovv/fleetmaster.git
-git push -u origin main
+pip install fleetmaster
 ```
 
-### 2. Set Up Your Development Environment
+## What is Fleetmaster?
 
-Then, install the environment and the pre-commit hooks with
+`fleetmaster` is a command-line interface (CLI) wrapper for the Capytaine library. It simplifies the process of running hydrodynamic simulations by allowing you to define and execute simulation batches directly from the terminal or through a YAML configuration file. This makes it easy to automate and replicate your simulations.
+
+The package also includes an optional GUI for a more interactive experience.
+
+## Examples
+
+Here are a few examples of how to use the `fleetmaster` CLI.
+
+### Show the help message
+
+To see all available commands and options, run:
 
 ```bash
-make install
+fleetmaster --help
 ```
 
-This will also generate your `uv.lock` file
+### Run a simulation for a single geometry
 
-### 3. Run the pre-commit hooks
-
-Initially, the CI/CD pipeline might be failing due to formatting issues. To resolve those run:
+You can run a simulation for a single STL file and specify parameters like draft directly.
 
 ```bash
-uv run pre-commit run -a
+fleetmaster run path/to/your/geometry.stl --drafts 0.5 1.0 1.5
 ```
 
-### 4. Commit the changes
+### Run a batch simulation using a settings file
 
-Lastly, commit the changes made by the two steps above to your repository.
+For more complex scenarios, you can define all your settings in a YAML file and pass it to the `run` command.
 
 ```bash
-git add .
-git commit -m 'Fix formatting issues'
-git push origin main
+fleetmaster run --settings-file path/to/your/settings.yml
 ```
 
-You are now ready to start development on your project!
-The CI/CD pipeline will be triggered when you open a pull request, merge to main, or when you create a new release.
+### Launch the GUI
 
-To finalize the set-up for publishing to PyPI, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/publishing/#set-up-for-pypi).
-For activating the automatic documentation with MkDocs, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/mkdocs/#enabling-the-documentation-on-github).
-To enable the code coverage reports, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/codecov/).
+If you have installed the GUI dependencies (`pip install fleetmaster[gui]`), you can launch the graphical user interface.
 
-## Releasing a new version
-
-- Create an API Token on [PyPI](https://pypi.org/).
-- Add the API Token to your projects secrets with the name `PYPI_TOKEN` by visiting [this page](https://github.com/eelcovv/fleetmaster/settings/secrets/actions/new).
-- Create a [new release](https://github.com/eelcovv/fleetmaster/releases/new) on Github.
-- Create a new tag in the form `*.*.*`.
-
-For more details, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/cicd/#how-to-trigger-a-release).
-
----
-
-Repository initiated with [dave-Lab-and-Engineering/cookiecutter-dave](https://github.com/dave-Lab-and-Engineering/cookiecutter-dave.git).
+```bash
+fleetmaster gui
+```

@@ -126,3 +126,31 @@ Before you submit a pull request, check that it meets these guidelines:
 
 2. If the pull request adds functionality, the docs should be updated.
    Put your new functionality into a function with a docstring, and add the feature to the list in `README.md`.
+
+## Developers tips and tricks
+
+### vscode
+
+In case you want to add a quick launcher under `.vscode/launcher.json`, an example is:
+
+```json
+    "configurations": [
+              {
+            "name": "fleetmaster draf 1m",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fleetmaster.cli",
+            "console": "integratedTerminal",
+            "args": ["-v", "run", "examples/defraction_box_1m.stl"],
+            "justMyCode": true
+        },
+    ]
+```
+
+### linux
+
+To install in linux
+
+### nixos
+
+To run the
