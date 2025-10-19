@@ -103,7 +103,7 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
     return output_file
 
 
-def _prepare_capytaine_body(stl_file: str, lid: bool, grid_symmetry: bool) -> Any:
+def _prepare_capytaine_body(stl_file: str, lid: bool, grid_symmetry: bool, add_centre_of_mass: bool = False) -> Any:
     """
     Load an STL file and configure a Capytaine FloatingBody object.
     """
@@ -111,9 +111,17 @@ def _prepare_capytaine_body(stl_file: str, lid: bool, grid_symmetry: bool) -> An
     lid_mesh = hull_mesh.generate_lid(z=-0.01) if lid else None
 
     if grid_symmetry:
+        logger.debug("Applying grid symmetery")
         hull_mesh = cpt.ReflectionSymmetricMesh(hull_mesh, plane=cpt.xOz_Plane, name=f"{Path(stl_file).stem}_mesh")
 
-    boat = cpt.FloatingBody(mesh=hull_mesh, lid_mesh=lid_mesh)
+    if add_centre_of_mass:
+        full_mesh = trimesh.load_mesh(stl_file)
+        cog = full_mesh.center_mass
+        logger.debug(f"Adding COG {cog}")
+    else:
+        cog = None
+
+    boat = cpt.FloatingBody(mesh=hull_mesh, lid_mesh=lid_mesh, center_of_mass=cog)
     boat.add_all_rigid_body_dofs()
     boat.keep_immersed_part()
     return boat
@@ -219,6 +227,7 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
 
     forwards_speeds = settings.forward_speed if isinstance(settings.forward_speed, list) else [settings.forward_speed]
 
+    add_center_of_mass = settings.add_center_of_mass
     lid = settings.lid
     grid_symmetry = settings.grid_symmetry
 
@@ -233,6 +242,7 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
     logger.info(fmt_str % ("Output file", output_file))
     logger.info(fmt_str % ("Grid symmetry", grid_symmetry))
     logger.info(fmt_str % ("Use lid", lid))
+    logger.info(fmt_str % ("Add COG ", add_center_of_mass))
     logger.info(fmt_str % ("Direction(s) [rad]", wave_directions))
     logger.info(fmt_str % ("Wave period(s) [s]", wave_periods))
     logger.info(fmt_str % ("Water depth(s) [m]", water_depths))
@@ -247,6 +257,7 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
         water_levels=water_levels,
         forwards_speeds=forwards_speeds,
         lid=lid,
+        add_center_of_mass=add_center_of_mass,
         grid_symmetry=grid_symmetry,
         output_file=output_file,
         update_cases=settings.update_cases,
@@ -262,13 +273,16 @@ def process_all_cases_for_one_stl(
     water_levels: list | npt.NDArray[np.float64],
     forwards_speeds: list | npt.NDArray[np.float64],
     lid: bool,
+    add_center_of_mass: bool,
     grid_symmetry: bool,
     output_file: Path,
     update_cases: bool = False,
     combine_cases: bool = False,
 ) -> None:
     mesh_name = Path(stl_file).stem
-    boat = _prepare_capytaine_body(stl_file, lid=lid, grid_symmetry=grid_symmetry)
+    boat = _prepare_capytaine_body(
+        stl_file, lid=lid, grid_symmetry=grid_symmetry, add_centre_of_mass=add_center_of_mass
+    )
 
     all_datasets = []
 

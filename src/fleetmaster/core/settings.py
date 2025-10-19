@@ -23,7 +23,8 @@ class SimulationSettings(BaseModel):
     wave_periods: float | list[float] = Field(default=[5.0, 10.0, 15.0, 20.0])
     wave_directions: float | list[float] = Field(default=[0.0, 45.0, 90.0, 135.0, 180.0])
     forward_speed: float | list[float] = 0.0
-    lid: bool = True
+    lid: bool = False
+    add_center_of_mass: bool = False
     grid_symmetry: bool = False
     water_depth: float | list[float] = np.inf
     water_level: float | list[float] = 0.0
