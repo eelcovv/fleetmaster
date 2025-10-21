@@ -67,7 +67,7 @@ def test_make_database_rename_and_convert(mock_cpt):
     assert "j" in dataset.dims
     assert "phony_dim_0" not in dataset.dims
     assert "phony_dim_1" not in dataset.dims
-    assert dataset["radiating_dof"].dtype == "object"  # converted to string
+    assert dataset["radiating_dof"].dtype.kind == "U"  # converted to string
 
 
 def test_setup_output_file_no_stl_files(mock_settings):
