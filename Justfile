@@ -53,7 +53,7 @@ build: clean-build
 # Clean build artifacts
 clean-build:
     @echo "🚀 Removing build artifacts"
-    @rm -rf dist || true
+    @uv run python -c "import shutil; shutil.rmtree('dist', ignore_errors=True)"
 
 # ---------------------------------------
 # Publish
