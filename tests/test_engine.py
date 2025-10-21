@@ -153,7 +153,7 @@ def test_add_mesh_to_database_new(tmp_path):
         assert group.attrs["cog_x"] == 0.1
         assert "inertia_tensor" in group
         assert "stl_content" in group
-        assert group["stl_content"][()] == memoryview(stl_content)
+        assert group["stl_content"][()].tobytes() == stl_content
 
 
 def test_add_mesh_to_database_skip_existing(tmp_path, caplog):

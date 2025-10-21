@@ -212,6 +212,10 @@ def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file
     """
     logger.info(f"Processing STL file: {stl_file}")
 
+    # check is done by Settings, so this should no happen anymore
+    if settings.lid and settings.grid_symmetry:
+        raise LidAndSymmetryEnabledError()
+
     # Add mesh to the database first
     add_mesh_to_database(output_file, stl_file, settings.overwrite_meshes)
 
