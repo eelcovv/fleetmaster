@@ -213,5 +213,6 @@ To run the this packagine in a nix os environment, use the flake below to activa
 Activate the flake with
 
 ```
+use flake flake.nix
 
 ```

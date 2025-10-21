@@ -4,7 +4,7 @@
 [project]
 name = "fleetmaster"
 version = "0.0.1"
-description = "A wrapper to run capytaine from theandline"
+description = "A wrapper to run capytaine in batch from the command  line"
 authors = [{ name = "Eelco van Vliet", email = "eelco@davelab.nl" }]
 readme = "README.md"
 keywords = ['python']
