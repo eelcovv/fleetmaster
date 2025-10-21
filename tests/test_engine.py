@@ -73,7 +73,7 @@ def test_make_database_rename_and_convert(mock_cpt):
 def test_setup_output_file_no_stl_files(mock_settings):
     """Test _setup_output_file raises ValueError when no STL files are provided."""
     mock_settings.stl_files = []
-    with pytest.raises(ValueError, match="No STL files provided to process."):
+    with pytest.raises(ValueError, match=r"No STL files provided to process."):
         _setup_output_file(mock_settings)
 
 
