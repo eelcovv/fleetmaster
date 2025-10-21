@@ -38,9 +38,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gui = [
-    "pyside6-essentials>=6.10.0",
-]
+gui = ["pyside6-essentials>=6.10.0"]
 dev = [
     "pytest>=7.2.0",
     "pre-commit>=4.3.0",
@@ -92,21 +90,23 @@ requires = ["setuptools>=61.2", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.dynamic]
-version = {attr = "setuptools_scm.get_version"}
-readme = {file = ["README.md"], content-type = "text/markdown"}
+version = { attr = "setuptools_scm.get_version" }
+readme = { file = ["README.md"], content-type = "text/markdown" }
 
 
 [tool.setuptools_scm]
-# For smarter version schemes and other configuration options,
-# check out https://github.com/pypa/setuptools_scm
-version_scheme = "no-guess-dev"
+# Guess dev-versie based on last tag. .e.g after v0.1 it will be  0.1.1.devN
+version_scheme = "guess-next-dev"
+
+# removes tghe "+g..." hash, such that PyPI accepts the versionjk:w
+
+local_scheme = "no-local-version"
 
 
 # ========================================================================================
 # 🔹 PUBLICATION using UV
 # ========================================================================================
 # === uv  ===
-
 
 
 # ========================================================================================
@@ -167,7 +167,8 @@ select = [
     # mccabe
     "C90",
     # pycodestyle
-    "E", "W",
+    "E",
+    "W",
     # pyflakes
     "F",
     # pygrep-hooks
@@ -238,7 +239,7 @@ source = ["src"]
 [tool.tox]
 requires = ["tox>4", "tox-uv>=1.11.3"]
 isolated_build = true
-env_list = ["py310", "py311",  "py312", "py313", "fix", "dev", "type", "build"]
+env_list = ["py310", "py311", "py312", "py313", "fix", "dev", "type", "build"]
 
 # === testenv to run pytest over all your environment ===
 [tool.tox.env_run_base]
@@ -254,7 +255,7 @@ commands = [["pytest"]]
 [tool.tox.env.build]
 description = "Build the package using uv"
 changedir = "{toxinidir}"
-commands = [["uv",  "build"]]
+commands = [["uv", "build"]]
 allowlist_externals = ["uv"]
 
 [tool.tox.env.fix]
@@ -268,16 +269,12 @@ commands = [["pre-commit", "run", "--all-files", "--show-diff-on-failure"]]
 [tool.tox.env.type]
 runner = "uv-venv-lock-runner"
 description = "run type checker via mypy"
-dependency_groups = [
-    "dev",
-]
+dependency_groups = ["dev"]
 deps = ["."]
-commands = [["mypy",  "{posargs:src}"]]
+commands = [["mypy", "{posargs:src}"]]
 
 [tool.tox.env.dev]
 runner = "uv-venv-lock-runner"
 description = "dev environment"
-dependency_groups = [
-    "dev",
-]
+dependency_groups = ["dev"]
 commands = [["uv", "pip", "tree"]]
