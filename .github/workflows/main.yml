@@ -22,8 +22,11 @@ jobs:
       - name: Set up the environment
         uses: ./.github/actions/setup-python-env
 
-      - name: Run checks
-        run: make check
+      - name: Check formatting with Ruff
+        run: uv run ruff format --check .
+
+      - name: Check linting with Ruff
+        run: uv run ruff check .
 
   tests-and-type-check:
     runs-on: ubuntu-latest
