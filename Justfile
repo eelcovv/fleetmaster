@@ -61,11 +61,20 @@ clean-build:
 
 # Publish a release to PyPI
 publish:
-    @echo "🚀 Publishing."
+    @echo "🚀 Publishing to PyPI."
     @uvx twine upload --repository-url https://upload.pypi.org/legacy/ dist/*
 
-# Build and publish
+# Publish a release to TestPyPI
+publish-test:
+    @echo "🚀 Publishing to TestPyPI."
+    @uvx twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+
+# Build and publish to PyPI
 build-and-publish: build publish
+
+# Build and publish to TestPyPI
+build-and-publish-test: build publish-test
+
 
 # ---------------------------------------
 # Docs
