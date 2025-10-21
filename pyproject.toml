@@ -34,6 +34,7 @@ dependencies = [
     "rich>=14.2.0",
     "trimesh>=4.8.3",
     "vtk>=9.5.2",
+    "xarray>=2025.6.1",
 ]
 
 [project.optional-dependencies]
