@@ -108,15 +108,15 @@ Please note this documentation assumes you already have `uv` and `Git` installed
 
 10. Commit your changes and push your branch to GitHub:
 
-   ```bash
-   git add .
-   git commit -m "Your detailed description of your changes."
-   git push origin name-of-your-bugfix-or-feature
-   ```
+```bash
+git add .
+git commit -m "Your detailed description of your changes."
+git push origin name-of-your-bugfix-or-feature
+```
 
 11. Submit a pull request through the GitHub website.
 
-   Done!
+Done!
 
 ## Pull Request Guidelines
 
@@ -126,3 +126,92 @@ Before you submit a pull request, check that it meets these guidelines:
 
 2. If the pull request adds functionality, the docs should be updated.
    Put your new functionality into a function with a docstring, and add the feature to the list in `README.md`.
+
+## Developers tips and tricks
+
+### vscode
+
+In case you want to add a quick launcher under `.vscode/launcher.json`, an example is:
+
+```json
+    "configurations": [
+              {
+            "name": "fleetmaster draf 1m",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fleetmaster.cli",
+            "console": "integratedTerminal",
+            "args": ["-v", "run", "examples/defraction_box_1m.stl"],
+            "justMyCode": true
+        },
+    ]
+```
+
+### direnv
+
+If you are only using a Python virtual environment (without Nix), you can use `direnv` to activate it automatically.
+Create a `.envrc` file with the following content:
+
+```shell
+# Load the Python virtual environment if it exists
+if [ -d .venv ]; then
+  layout python .venv
+fi
+```
+
+### linux
+
+To install in linux
+
+### nixos
+
+To run the this packagine in a nix os environment, use the flake below to activate your environment.:
+
+```nix
+{
+  description = "Development environment for the fleetmaster project";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = import nixpkgs { inherit system; };
+      in
+      {
+        devShells.default = pkgs.mkShell {
+          packages = with pkgs; [
+            # Python en package manager
+            python312
+            uv
+
+            # Core dependencies voor de GUI
+            vtk
+            qt6.full
+
+            # Essentiële libraries voor rendering en windowing
+            mesa
+            libglvnd
+            wayland
+            libxkbcommon
+            xorg.libX11
+            xorg.libXcursor
+            xorg.libXrandr
+            xorg.libXi
+            fontconfig
+            freetype
+            harfbuzz
+          ];
+        };
+      });
+}
+```
+
+Activate the flake with
+
+```
+use flake flake.nix
+```
