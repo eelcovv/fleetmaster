@@ -3,7 +3,7 @@
 # ========================================================================================
 [project]
 name = "fleetmaster"
-version = "0.0.1"
+dynamic = ["version"]
 description = "A wrapper to run capytaine in batch from the commandline"
 authors = [{ name = "Eelco van Vliet", email = "eelco@davelab.nl" }]
 readme = "README.md"
@@ -90,6 +90,11 @@ fleetmaster = "fleetmaster.cli:cli"
 requires = ["setuptools>=61.2", "setuptools_scm>=8"]
 
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "setuptools_scm.get_version"}
+readme = {file = ["README.md"], content-type = "text/markdown"}
+
 
 [tool.setuptools_scm]
 # For smarter version schemes and other configuration options,
