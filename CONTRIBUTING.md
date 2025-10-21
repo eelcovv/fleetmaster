@@ -214,5 +214,4 @@ Activate the flake with
 
 ```
 use flake flake.nix
-
 ```
