@@ -151,9 +151,9 @@ def test_add_mesh_to_database_new(tmp_path):
         assert "sha256" in group.attrs
         assert group.attrs["volume"] == 1.0
         assert group.attrs["cog_x"] == 0.1
-        assert "inertia_tensor" in group
-        assert "stl_content" in group
-        assert group["stl_content"][()].tobytes() == stl_content
+        assert "inertia_tensor" in group  # type: ignore[reportOperatorIssue]
+        assert "stl_content" in group  # type: ignore[reportOperatorIssue]
+        assert group["stl_content"][()].tobytes() == stl_content  # type: ignore[reportAttributeAccessIssue]
 
 
 def test_add_mesh_to_database_skip_existing(tmp_path, caplog):
