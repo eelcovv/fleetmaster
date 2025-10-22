@@ -16,13 +16,13 @@ except ImportError:
     VTK_AVAILABLE = False
 
 
-def show_with_trimesh(mesh: trimesh.Trimesh):
+def show_with_trimesh(mesh: trimesh.Trimesh) -> None:
     """Visualizes the mesh using the built-in trimesh viewer."""
     print("🎨 Displaying mesh with trimesh viewer. Close the window to continue.")
     mesh.show()
 
 
-def show_with_vtk(mesh: trimesh.Trimesh):
+def show_with_vtk(mesh: trimesh.Trimesh) -> None:
     """Visualizes the mesh using a VTK pipeline."""
     if not VTK_AVAILABLE:
         print("❌ Error: The 'vtk' library is not installed. Please install it with 'pip install vtk'.")
@@ -92,7 +92,7 @@ def show_with_vtk(mesh: trimesh.Trimesh):
     render_window_interactor.Start()
 
 
-def visualize_mesh_from_db(hdf5_path: str, mesh_name: str, use_vtk: bool):
+def visualize_mesh_from_db(hdf5_path: str, mesh_name: str, use_vtk: bool) -> None:
     """
     Loads a specific mesh from the HDF5 database and visualizes it.
     """

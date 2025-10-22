@@ -22,13 +22,13 @@ except ImportError:
     VTK_AVAILABLE = False
 
 
-def show_with_trimesh(mesh: trimesh.Trimesh):
+def show_with_trimesh(mesh: trimesh.Trimesh) -> None:
     """Visualizes the mesh using the built-in trimesh viewer."""
     click.echo("🎨 Displaying mesh with trimesh viewer. Close the window to continue.")
     mesh.show()
 
 
-def show_with_vtk(meshes: list[trimesh.Trimesh]):
+def show_with_vtk(meshes: list[trimesh.Trimesh]) -> None:
     """Visualizes the mesh using a VTK pipeline."""
     if not VTK_AVAILABLE:
         click.echo("❌ Error: The 'vtk' library is not installed. Please install it with 'pip install vtk'.")
@@ -96,7 +96,7 @@ def show_with_vtk(meshes: list[trimesh.Trimesh]):
     render_window_interactor.Start()
 
 
-def visualize_meshes_from_db(hdf5_path: str, mesh_names_to_show: list[str], use_vtk: bool):
+def visualize_meshes_from_db(hdf5_path: str, mesh_names_to_show: list[str], use_vtk: bool) -> None:
     """Loads one or more meshes from HDF5 databases and visualizes them in a single scene."""
     loaded_meshes = []
 
@@ -154,7 +154,7 @@ def visualize_meshes_from_db(hdf5_path: str, mesh_names_to_show: list[str], use_
 @click.argument("mesh_names", nargs=-1)
 @click.option("--vtk", is_flag=True, help="Use the VTK viewer instead of the default trimesh viewer.")
 @click.option("--show-all", is_flag=True, help="Visualize all meshes found in the specified files.")
-def view(hdf5_file: str, mesh_names: tuple[str, ...], vtk: bool, show_all: bool):
+def view(hdf5_file: str, mesh_names: tuple[str, ...], vtk: bool, show_all: bool) -> None:
     """
     CLI command to load and visualize meshes from HDF5 databases.
 
