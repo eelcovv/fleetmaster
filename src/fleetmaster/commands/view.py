@@ -14,7 +14,7 @@ try:
     from vtk.util.numpy_support import numpy_to_vtk
 
     VTK_AVAILABLE = True
-    import numpy as np # numpy is needed for vtk conversion
+    # The global import of numpy is sufficient.
 except ImportError:
     VTK_AVAILABLE = False
 
@@ -25,53 +25,53 @@ def show_with_trimesh(mesh: trimesh.Trimesh):
     mesh.show()
 
 
-def show_with_vtk(mesh: trimesh.Trimesh):
+def show_with_vtk(meshes: list[trimesh.Trimesh], mode: str):
     """Visualizes the mesh using a VTK pipeline."""
     if not VTK_AVAILABLE:
         click.echo("❌ Error: The 'vtk' library is not installed. Please install it with 'pip install vtk'.")
         return
 
-    click.echo("🎨 Displaying mesh with VTK viewer. Close the window to continue.")
-
-    # 1. Convert trimesh data to VTK format
-    # Get vertices and faces
-    vertices = mesh.vertices
-    # VTK requires a specific format for faces: [num_points, p1_idx, p2_idx, p3_idx, ...]
-    faces = np.hstack((np.full((len(mesh.faces), 1), 3), mesh.faces)).flatten()
-
-    # Create vtkPoints for the vertices
-    vtk_points = vtk.vtkPoints()
-    vtk_points.SetData(numpy_to_vtk(vertices, deep=True))
-
-    # Create vtkCellArray for the faces
-    vtk_cells = vtk.vtkCellArray()
-    vtk_cells.SetCells(len(mesh.faces), numpy_to_vtk(faces, deep=True, array_type=vtk.VTK_ID_TYPE))
-
-    # 2. Create the vtkPolyData (the actual geometry)
-    poly_data = vtk.vtkPolyData()
-    poly_data.SetPoints(vtk_points)
-    poly_data.SetPolys(vtk_cells)
-
-    # 3. Set up the visualization pipeline
-    # Mapper: Connects the geometry to the graphics hardware
-    mapper = vtk.vtkPolyDataMapper()
-    mapper.SetInputData(poly_data)
-
-    # Actor: Represents the object in the scene (position, color, etc.)
-    actor = vtk.vtkActor()
-    actor.SetMapper(mapper)
-    actor.GetProperty().SetColor(0.8, 0.8, 1.0)  # Light blue
-    actor.GetProperty().EdgeVisibilityOn()
-    actor.GetProperty().SetEdgeColor(0.1, 0.1, 0.2)
-
-    # Renderer: Manages the scene, camera, and lighting
+    click.echo(f"🎨 Displaying {len(meshes)} mesh(es) with VTK viewer. Close the window to continue.")
     renderer = vtk.vtkRenderer()
-    renderer.AddActor(actor)
     renderer.SetBackground(0.1, 0.2, 0.3)  # Dark blue/gray
+
+    # Define a list of colors for multiple meshes
+    colors = [
+        (0.8, 0.8, 1.0),  # Light Blue
+        (1.0, 0.8, 0.8),  # Light Red
+        (0.8, 1.0, 0.8),  # Light Green
+        (1.0, 1.0, 0.8),  # Light Yellow
+    ]
+
+    # 2. Loop through each mesh, create an actor, and add it to the renderer
+    for i, mesh in enumerate(meshes):
+        # Convert trimesh data to VTK format
+        vertices = mesh.vertices
+        faces = np.hstack((np.full((len(mesh.faces), 1), 3), mesh.faces)).flatten()
+        vtk_points = vtk.vtkPoints()
+        vtk_points.SetData(numpy_to_vtk(vertices, deep=True))
+        vtk_cells = vtk.vtkCellArray()
+        vtk_cells.SetCells(len(mesh.faces), numpy_to_vtk(faces, deep=True, array_type=vtk.VTK_ID_TYPE))
+        poly_data = vtk.vtkPolyData()
+        poly_data.SetPoints(vtk_points)
+        poly_data.SetPolys(vtk_cells)
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(poly_data)
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        actor.GetProperty().SetColor(colors[i % len(colors)])
+        if mode == "wireframe":
+            actor.GetProperty().SetRepresentationToWireframe()
+        renderer.AddActor(actor)
+
+    # Add a global axes actor at the origin
+    axes_at_origin = vtk.vtkAxesActor()
+    axes_at_origin.SetTotalLength(1.0, 1.0, 1.0)  # Set size of the axes
+    renderer.AddActor(axes_at_origin)
 
     # Add an axes actor for context
     axes = vtk.vtkAxesActor()
-    widget = vtk.vtkOrientationMarkerWidget()
+    widget = vtk.vtkOrientationMarkerWidget()  # This is the small one in the corner
     widget.SetOutlineColor(0.9300, 0.5700, 0.1300)
     widget.SetOrientationMarker(axes)
 
@@ -95,60 +95,105 @@ def show_with_vtk(mesh: trimesh.Trimesh):
     render_window_interactor.Start()
 
 
-def visualize_mesh_from_db(hdf5_paths: list[str], mesh_name: str, use_vtk: bool):
-    """Loads a specific mesh from the HDF5 database and visualizes it."""
-    found_mesh_data = None
-    found_in_file = None
+def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str], use_vtk: bool, mode: str):
+    """Loads one or more meshes from HDF5 databases and visualizes them in a single scene."""
+    loaded_meshes = []
 
-    for hdf5_path in hdf5_paths:
-        db_file = Path(hdf5_path)
-        if not db_file.exists():
-            click.echo(f"❌ Warning: Database file '{hdf5_path}' not found. Skipping.", err=True)
-            continue
+    for mesh_name in mesh_names_to_show:
+        found_mesh_data = None
+        for hdf5_path in hdf5_paths:
+            db_file = Path(hdf5_path)
+            if not db_file.exists():
+                continue  # Skip non-existent files silently, list command can be used for checks
 
-        mesh_group_path = f"meshes/{mesh_name}"
-        try:
-            with h5py.File(db_file, "r") as f:
-                if mesh_group_path in f:
-                    click.echo(f"📦 Loading mesh '{mesh_name}' from '{hdf5_path}'...")
-                    found_mesh_data = f[mesh_group_path]["stl_content"][()]
-                    found_in_file = hdf5_path
-                    break  # Found the mesh, no need to check other files
-        except Exception as e:
-            click.echo(f"❌ Error reading '{hdf5_path}': {e}", err=True)
-            continue
+            mesh_group_path = f"meshes/{mesh_name}"
+            try:
+                with h5py.File(db_file, "r") as f:
+                    if mesh_group_path in f:
+                        click.echo(f"📦 Loading mesh '{mesh_name}' from '{hdf5_path}'...")
+                        found_mesh_data = f[mesh_group_path]["stl_content"][()]
+                        break  # Found the mesh, no need to check other files for this name
+            except Exception as e:
+                click.echo(f"❌ Error reading '{hdf5_path}': {e}", err=True)
+                continue
 
-    if found_mesh_data is None:
-        click.echo(f"❌ Error: Mesh '{mesh_name}' not found in any of the specified HDF5 files.", err=True)
-        click.echo("Use 'fleetmaster list --file <your_file.hdf5>' to see available meshes.", err=True)
+        if found_mesh_data is not None and found_mesh_data.size > 0: # Check for non-None and non-empty array
+            stl_file_in_memory = io.BytesIO(found_mesh_data)
+            mesh = trimesh.load_mesh(stl_file_in_memory, file_type="stl")
+            loaded_meshes.append(mesh)
+        else:
+            click.echo(f"❌ Warning: Mesh '{mesh_name}' not found in any of the specified files.", err=True)
+
+    if not loaded_meshes:
+        click.echo("No meshes were loaded. Nothing to display.", err=True)
         return
 
-    # If we found the mesh, proceed with visualization
-    stl_binary_content = found_mesh_data
-
-    stl_file_in_memory = io.BytesIO(stl_binary_content)
-    mesh = trimesh.load_mesh(stl_file_in_memory, file_type="stl")
-
     if use_vtk:
-        show_with_vtk(mesh)
+        show_with_vtk(loaded_meshes, mode)
     else:
-        show_with_trimesh(mesh)
+        click.echo(f"🎨 Displaying {len(loaded_meshes)} mesh(es) with trimesh viewer. Close the window to continue.")
+        # Create a scene and add an axis marker at the origin
+        scene = trimesh.Scene()
+        scene.add_geometry(trimesh.creation.axis(origin_size=0.05))
+
+        if mode == "wireframe":
+            # For wireframe, set the visual properties of each mesh
+            for mesh in loaded_meshes:
+                mesh.visual = trimesh.visual.ColorVisuals(mesh, edge_colors=[0, 0, 0, 255])
+                scene.add_geometry(mesh)
+        else:
+            scene.add_geometry(loaded_meshes)
+
+        scene.show()
 
 
-@click.command(name="view", help="Visualize a specific mesh from one or more HDF5 database files.")
-@click.argument("mesh_name")
+@click.command(name="view", help="Visualize one or more meshes from HDF5 database files.")
+@click.argument("mesh_names", nargs=-1)
 @click.option("--file", "-f", "hdf5_files", multiple=True, default=["results.hdf5"],
               help="Path to one or more HDF5 database files. Can be specified multiple times.")
 @click.option("--vtk", is_flag=True, help="Use the VTK viewer instead of the default trimesh viewer.")
-def view(mesh_name: str, hdf5_files: tuple[str, ...], vtk: bool):
+@click.option("--show-all", is_flag=True, help="Visualize all meshes found in the specified files.")
+@click.option("--mode", type=click.Choice(["solid", "wireframe"]), default="solid", help="Visualization mode.", show_default=True)
+def view(mesh_names: tuple[str, ...], hdf5_files: tuple[str, ...], vtk: bool, show_all: bool, mode: str):
     """
-    CLI command to load and visualize a specific mesh from the HDF5 database.
+    CLI command to load and visualize meshes from HDF5 databases.
 
-    MESH_NAME: The name of the mesh to visualize (e.g., 'barge_draft_1.0').
+    You can specify mesh names as arguments or use --show-all.
     """
-    if not mesh_name:
-        click.echo("❌ Error: Please provide a MESH_NAME to visualize.", err=True)
-        click.echo("Use 'fleetmaster list --file <your_file.hdf5>' to see available meshes.", err=True)
+    # --- Smartly separate file paths from mesh names ---
+    all_args = list(mesh_names) + list(hdf5_files)
+    
+    files_to_check = {arg for arg in all_args if arg.endswith((".hdf5", ".h5"))}
+    meshes_to_show = {arg for arg in all_args if not arg.endswith((".hdf5", ".h5"))}
+
+    # If the user provided file paths but also left the default --file value, remove the default.
+    # This happens if they provide a path as a positional argument without using -f.
+    if files_to_check and "results.hdf5" in hdf5_files and len(hdf5_files) == 1:
+        ctx = click.get_current_context()
+        if ctx.get_parameter_source("hdf5_files") == click.core.ParameterSource.DEFAULT:
+             # The user didn't explicitly type '--file results.hdf5', so we can ignore it
+             # if other files were found.
+             pass # The default is implicitly overridden by the positional file args.
+    elif not files_to_check:
+        files_to_check = set(hdf5_files) # Use the default or user-provided --file
+
+    if show_all:
+        all_found_meshes = set()
+        for hdf5_path in files_to_check:
+            db_file = Path(hdf5_path)
+            if not db_file.exists():
+                click.echo(f"❌ Warning: Database file '{hdf5_path}' not found. Skipping.", err=True)
+                continue
+            with h5py.File(db_file, "r") as f:
+                meshes_to_show.update(f.get("meshes", {}).keys())
+
+    # Remove duplicates
+    final_meshes_to_show = sorted(list(meshes_to_show))
+    final_files_to_check = list(files_to_check)
+    
+    if not meshes_to_show:
+        click.echo("No mesh names provided and no meshes found with --show-all.", err=True)
+        click.echo("Usage: fleetmaster view [MESH_NAME...] [--file <path>] or fleetmaster view --show-all", err=True)
         return
 
-    visualize_mesh_from_db(list(hdf5_files), mesh_name, vtk)
+    visualize_meshes_from_db(final_files_to_check, final_meshes_to_show, vtk, mode)
