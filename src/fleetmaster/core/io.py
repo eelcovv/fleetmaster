@@ -15,7 +15,7 @@ def load_meshes_from_hdf5(
     """Load and return trimesh objects for the given names from HDF5."""
     meshes: list[trimesh.Trimesh] = []
     if not hdf5_path.exists():
-        raise FileNotFoundError(f"{hdf5_path} not found")
+        raise FileNotFoundError(f"{hdf5_path} not found")  # noqa: TRY003
 
     with h5py.File(hdf5_path, "r") as f:
         for name in mesh_names:

@@ -164,6 +164,7 @@ def test_add_mesh_to_database_new(tmp_path):
 
     add_mesh_to_database(output_file, mock_mesh, "mesh", overwrite=False)
 
+    file_hash = hashlib.sha256(stl_content).hexdigest()
     # Assert that mesh attributes and datasets remain unchanged
     with h5py.File(output_file, "r") as f:
         group = f["meshes/mesh"]

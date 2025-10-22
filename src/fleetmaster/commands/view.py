@@ -3,12 +3,15 @@
 import logging
 from itertools import cycle
 from pathlib import Path
+from typing import Any
 
 import click
 import h5py
 import numpy as np
 import trimesh
 from trimesh import Trimesh
+
+from fleetmaster.core.io import load_meshes_from_hdf5
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +24,6 @@ try:
     # The global import of numpy is sufficient.
 except ImportError:
     VTK_AVAILABLE = False
-
-from fleetmaster.core.io import load_meshes_from_hdf5
 
 VTK_COLORS = [
     (0.8, 0.8, 1.0),  # Light Blue
@@ -38,7 +39,7 @@ def show_with_trimesh(mesh: trimesh.Trimesh) -> None:
     mesh.show()
 
 
-def _vtk_actor_from_trimesh(mesh: trimesh.Trimesh, color: tuple[float, float, float]) -> vtk.vtkActor:
+def _vtk_actor_from_trimesh(mesh: trimesh.Trimesh, color: tuple[float, float, float]) -> Any:
     """Creates a VTK actor from a trimesh object."""
     pts = vtk.vtkPoints()
     pts.SetData(numpy_to_vtk(mesh.vertices, deep=True))
