@@ -106,8 +106,7 @@ def visualize_mesh_from_db(hdf5_path: str, mesh_name: str, use_vtk: bool) -> Non
     with h5py.File(db_file, "r") as f:
         if mesh_group_path not in f:
             print(f"❌ Error: Mesh '{mesh_name}' not found in {hdf5_path}.")
-            available_meshes = list(f.get("meshes", {}).keys())
-            if available_meshes:
+            if available_meshes := list(f.get("meshes", {}).keys()):
                 print("\nAvailable meshes are:")
                 for name in available_meshes:
                     print(f"  - {name}")
