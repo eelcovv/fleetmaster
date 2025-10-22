@@ -115,8 +115,8 @@ def test_prepare_capytaine_body(mock_trimesh, mock_cpt):
     mock_body = MagicMock()
     mock_cpt.FloatingBody.return_value = mock_body
 
-    stl_file = "test.stl"
-    body = _prepare_capytaine_body(stl_file, lid=True, grid_symmetry=True, add_centre_of_mass=True)
+    stl_file = "test.stl" # noqa: S108
+    body, _ = _prepare_capytaine_body(stl_file, lid=True, grid_symmetry=True, add_center_of_mass=True)
 
     mock_cpt.load_mesh.assert_called_once_with(stl_file)
     mock_hull_mesh.generate_lid.assert_called_once()

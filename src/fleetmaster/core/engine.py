@@ -107,7 +107,7 @@ def _prepare_capytaine_body(
     stl_file: str,
     lid: bool,
     grid_symmetry: bool,
-    add_centre_of_mass: bool = False,
+    add_center_of_mass: bool = False,
     translation_x: float = 0.0,
     translation_y: float = 0.0,
     translation_z: float = 0.0,
@@ -130,7 +130,7 @@ def _prepare_capytaine_body(
         hull_mesh = cpt.ReflectionSymmetricMesh(hull_mesh, plane=cpt.xOz_Plane, name=f"{Path(stl_file).stem}_mesh")
 
     cog = None
-    if add_centre_of_mass:
+    if add_center_of_mass:
         full_mesh = trimesh.load_mesh(stl_file)
         if translation_x != 0.0 or translation_y != 0.0 or translation_z != 0.0:
             transform_matrix = trimesh.transformations.translation_matrix([translation_x, translation_y, translation_z])
