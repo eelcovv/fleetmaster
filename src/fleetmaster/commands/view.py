@@ -31,6 +31,7 @@ VTK_COLORS = [
     (1.0, 1.0, 0.8),  # Light Yellow
 ]
 
+
 def show_with_trimesh(mesh: trimesh.Trimesh) -> None:
     """Visualizes the mesh using the built-in trimesh viewer."""
     click.echo("🎨 Displaying mesh with trimesh viewer. Close the window to continue.")
