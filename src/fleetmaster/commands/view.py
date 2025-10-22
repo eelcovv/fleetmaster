@@ -109,18 +109,26 @@ def visualize_meshes_from_db(hdf5_path: str, mesh_names_to_show: list[str], use_
         found_mesh_data = None
         mesh_group_path = f"meshes/{mesh_name}"
         try:
+            logger.debug(f"Opening database {db_file}")
             with h5py.File(db_file, "r") as f:
                 if mesh_group_path in f:
                     click.echo(f"📦 Loading mesh '{mesh_name}' from '{hdf5_path}'...")
                     found_mesh_data = f[mesh_group_path]["stl_content"][()]
         except Exception as e:
+            logger.exception(f"Error reading mesh {mesh_group_path}' from '{hdf5_path}'")
             click.echo(f"❌ Error reading '{hdf5_path}': {e}", err=True)
             continue
 
-        if found_mesh_data is not None and len(found_mesh_data) > 0:  # A bytes object has no .size, use len()
-            stl_file_in_memory = io.BytesIO(found_mesh_data.tobytes())
-            mesh = trimesh.load_mesh(stl_file_in_memory, file_type="stl")
-            loaded_meshes.append(mesh)
+        if found_mesh_data:  # A non-empty numpy.void object evaluates to True.
+            try:
+                # The data is stored as a numpy.void object, which must be converted to bytes.
+                stl_bytes = found_mesh_data.tobytes()
+                mesh = trimesh.load_mesh(io.BytesIO(stl_bytes), file_type="stl")
+                if mesh:
+                    loaded_meshes.append(mesh)
+            except Exception as e:
+                logger.exception(f"Failed to parse mesh '{mesh_name}'")
+                click.echo(f"❌ Error parsing mesh '{mesh_name}': {e}", err=True)
         else:
             click.echo(f"❌ Warning: Mesh '{mesh_name}' not found in any of the specified files.", err=True)
 
@@ -132,13 +140,11 @@ def visualize_meshes_from_db(hdf5_path: str, mesh_names_to_show: list[str], use_
         show_with_vtk(loaded_meshes)
     else:
         click.echo(f"🎨 Displaying {len(loaded_meshes)} mesh(es) with trimesh viewer. Close the window to continue.")
-        # Create a scene and add an axis marker at the origin
-        scene = trimesh.Scene()
-        scene.add_geometry(trimesh.creation.axis(origin_size=0.05))
-
-        # Add all meshes to the scene
-        scene.add_geometry(loaded_meshes)
-
+        # To avoid potential rendering glitches with the scene object,
+        # we create a scene with an axis and pass the meshes to show directly.
+        axis = trimesh.creation.axis(origin_size=0.1)
+        scene = trimesh.Scene([axis] + loaded_meshes)
+        
         logger.debug("Showing with solid mode. Toggle with w/s to go to wireframe")
         scene.show()
 
