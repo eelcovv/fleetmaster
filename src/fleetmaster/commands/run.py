@@ -271,4 +271,5 @@ def run(stl_files: tuple[str, ...], settings_file: str | None, **kwargs: Any) ->
     except (click.UsageError, click.Abort):
         raise  # Re-raise to let click handle the error and exit
     except Exception as e:
+        logger.exception("An unexpected error occurred")
         click.echo(f"❌ An unexpected error occurred: {e}", err=True)

@@ -207,7 +207,7 @@ def add_mesh_to_database(output_file: Path, mesh_to_add: trimesh.Trimesh, mesh_n
         logger.debug("  - Wrote dataset: inertia_tensor")
 
         # Store the binary content of the final, transformed STL
-        group.create_dataset("stl_content", data=memoryview(new_stl_content))
+        group.create_dataset("stl_content", data=new_stl_content)
         logger.debug("  - Wrote dataset: stl_content")
 
 
@@ -411,6 +411,10 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
             # Combine the draft with the existing z-translation
             # A positive draft means sinking the vessel, so we subtract it.
             draft_settings.translation_z -= draft
+
+            # Ensure other translation settings are also passed through
+            draft_settings.translation_x = settings.translation_x
+            draft_settings.translation_y = settings.translation_y
 
             # Create a unique name for this draft-specific mesh configuration
             draft_str = _format_value_for_name(draft)
