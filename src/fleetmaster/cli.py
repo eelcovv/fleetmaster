@@ -19,7 +19,7 @@ import click
 from rich.logging import RichHandler
 
 from . import __version__
-from .commands import gui, run
+from .commands import gui, list_command, run, view
 from .logging_setup import setup_general_logger
 
 logger = setup_general_logger()
@@ -76,6 +76,12 @@ def cli(verbose: int) -> None:
     for h in package_logger.handlers:
         h.setLevel(log_level)
 
+    # If no subcommand is invoked, show the help message.
+    ctx = click.get_current_context()
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+        return
+
     if log_level <= logging.INFO:
         logger.info(
             "🚀 Fleetmaster CLI — ready to start your capytaine simulations.",
@@ -84,6 +90,8 @@ def cli(verbose: int) -> None:
 
 cli.add_command(run, name="run")
 cli.add_command(gui, name="gui")
+cli.add_command(list_command, name="list")
+cli.add_command(view, name="view")
 
 
 if __name__ == "__main__":

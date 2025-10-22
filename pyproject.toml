@@ -30,6 +30,7 @@ dependencies = [
     "numpy>=2.0.2",
     "pandas>=2.3.3",
     "pydantic>=2.12.2",
+    "pyglet<2",
     "pyyaml>=6.0.3",
     "rich>=14.2.0",
     "trimesh>=4.8.3",
@@ -133,7 +134,7 @@ module = [
     "PySide6.*",
     "rich.*",
     "trimesh.*",
-    "vtk",
+    "vtk.*",
     "yaml",
 ]
 ignore_missing_imports = true
@@ -226,6 +227,7 @@ source = ["src"]
     "mkdocs",
     "mkdocs-material",
     "mkdocstrings",
+    "pyglet",
     "types-PyYAML",
 ]
 

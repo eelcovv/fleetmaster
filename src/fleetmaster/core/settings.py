@@ -22,6 +22,9 @@ class SimulationSettings(BaseModel):
     output_hdf5_file: str = Field(default="results.hdf5", description="Path to the HDF5 output file.")
     wave_periods: float | list[float] = Field(default=[5.0, 10.0, 15.0, 20.0])
     wave_directions: float | list[float] = Field(default=[0.0, 45.0, 90.0, 135.0, 180.0])
+    translation_x: float = Field(default=0.0, description="Translation in X-direction to apply to the mesh.")
+    translation_y: float = Field(default=0.0, description="Translation in Y-direction to apply to the mesh.")
+    translation_z: float = Field(default=0.0, description="Translation in Z-direction to apply to the mesh.")
     forward_speed: float | list[float] = 0.0
     lid: bool = False
     add_center_of_mass: bool = False
