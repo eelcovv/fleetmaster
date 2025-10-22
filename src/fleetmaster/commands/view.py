@@ -96,30 +96,29 @@ def show_with_vtk(meshes: list[trimesh.Trimesh]):
     render_window_interactor.Start()
 
 
-def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str], use_vtk: bool):
+def visualize_meshes_from_db(hdf5_path: str, mesh_names_to_show: list[str], use_vtk: bool):
     """Loads one or more meshes from HDF5 databases and visualizes them in a single scene."""
     loaded_meshes = []
 
+    db_file = Path(hdf5_path)
+    if not db_file.exists():
+        click.echo(f"❌ Error: Database file '{hdf5_path}' not found.", err=True)
+        return
+
     for mesh_name in mesh_names_to_show:
         found_mesh_data = None
-        for hdf5_path in hdf5_paths:
-            db_file = Path(hdf5_path)
-            if not db_file.exists():
-                continue  # Skip non-existent files silently, list command can be used for checks
-
-            mesh_group_path = f"meshes/{mesh_name}"
-            try:
-                with h5py.File(db_file, "r") as f:
-                    if mesh_group_path in f:
-                        click.echo(f"📦 Loading mesh '{mesh_name}' from '{hdf5_path}'...")
-                        found_mesh_data = f[mesh_group_path]["stl_content"][()]
-                        break  # Found the mesh, no need to check other files for this name
-            except Exception as e:
-                click.echo(f"❌ Error reading '{hdf5_path}': {e}", err=True)
-                continue
+        mesh_group_path = f"meshes/{mesh_name}"
+        try:
+            with h5py.File(db_file, "r") as f:
+                if mesh_group_path in f:
+                    click.echo(f"📦 Loading mesh '{mesh_name}' from '{hdf5_path}'...")
+                    found_mesh_data = f[mesh_group_path]["stl_content"][()]
+        except Exception as e:
+            click.echo(f"❌ Error reading '{hdf5_path}': {e}", err=True)
+            continue
 
         if found_mesh_data is not None and len(found_mesh_data) > 0:  # A bytes object has no .size, use len()
-            stl_file_in_memory = io.BytesIO(found_mesh_data)
+            stl_file_in_memory = io.BytesIO(found_mesh_data.tobytes())
             mesh = trimesh.load_mesh(stl_file_in_memory, file_type="stl")
             loaded_meshes.append(mesh)
         else:
@@ -144,41 +143,36 @@ def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str
         scene.show()
 
 
-@click.command(name="view", help="Visualize one or more meshes from HDF5 database files.")
+@click.command(name="view", help="Visualize meshes from an HDF5 database file.")
+@click.argument("hdf5_file", type=click.Path(exists=True, dir_okay=False, resolve_path=True))
 @click.argument("mesh_names", nargs=-1)
-@click.option("--file", "-f", "hdf5_files", multiple=True, default=["results.hdf5"],
-              help="Path to one or more HDF5 database files. Can be specified multiple times.")
 @click.option("--vtk", is_flag=True, help="Use the VTK viewer instead of the default trimesh viewer.")
 @click.option("--show-all", is_flag=True, help="Visualize all meshes found in the specified files.")
-def view(mesh_names: tuple[str, ...], hdf5_files: tuple[str, ...], vtk: bool, show_all: bool):
+def view(hdf5_file: str, mesh_names: tuple[str, ...], vtk: bool, show_all: bool):
     """
     CLI command to load and visualize meshes from HDF5 databases.
 
-    You can specify mesh names as arguments or use --show-all.
+    HDF5_FILE: Path to the HDF5 database file.
+    [MESH_NAMES]...: Optional names of meshes to visualize.
     """
-    # Simplified and predictable logic:
-    # Positional arguments are mesh names.
-    # --file/-f arguments are HDF5 files.
-    files_to_check = set(hdf5_files)
+    # The HDF5 file is now a required positional argument.
+    # Mesh names are optional positional arguments.
     meshes_to_show = set(mesh_names)
 
     if show_all:
         # If --show-all, we ignore any provided mesh names and find all meshes in the specified files.
         meshes_to_show = set()
-        for hdf5_path in files_to_check:
-            db_file = Path(hdf5_path)
-            if not db_file.exists():
-                click.echo(f"❌ Warning: Database file '{hdf5_path}' not found. Skipping.", err=True)
-                continue
+        db_file = Path(hdf5_file)
+        if db_file.exists():
             with h5py.File(db_file, "r") as f:
                 meshes_to_show.update(f.get("meshes", {}).keys())
+        else:
+            click.echo(f"❌ Error: Database file '{hdf5_file}' not found.", err=True)
+            return
 
-    final_meshes_to_show = sorted(list(meshes_to_show))
-    final_files_to_check = list(files_to_check)
-
-    if not final_meshes_to_show:
+    if not meshes_to_show:
         click.echo("No mesh names provided and no meshes found with --show-all.", err=True)
-        click.echo("Usage: fleetmaster view [MESH_NAME...] --file <path>  OR  fleetmaster view --show-all --file <path>", err=True)
+        click.echo("Usage: fleetmaster view <HDF5_FILE> [MESH_NAME...]  OR  fleetmaster view <HDF5_FILE> --show-all", err=True)
         return
 
-    visualize_meshes_from_db(final_files_to_check, final_meshes_to_show, vtk)
+    visualize_meshes_from_db(hdf5_file, sorted(list(meshes_to_show)), vtk)

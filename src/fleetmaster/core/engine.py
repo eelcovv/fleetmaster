@@ -103,39 +103,65 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
     return output_file
 
 
-def _prepare_capytaine_body(
+def _prepare_trimesh_geometry(
     stl_file: str,
-    lid: bool,
-    grid_symmetry: bool,
-    add_center_of_mass: bool = False,
     translation_x: float = 0.0,
     translation_y: float = 0.0,
     translation_z: float = 0.0,
-) -> tuple[Any, trimesh.Trimesh]:
+) -> trimesh.Trimesh:
     """
-    Load an STL file and configure a Capytaine FloatingBody object.
-    The geometry is first loaded and transformed using trimesh, then passed to Capytaine.
+    Loads an STL file and applies specified translations.
+
+    Returns:
+        A trimesh.Trimesh object representing the transformed geometry.
     """
-    # 1. Load the mesh with trimesh to perform transformations.
-    trimesh_mesh = trimesh.load_mesh(stl_file)
+    transformed_mesh = trimesh.load_mesh(stl_file)
 
     # Apply translation if specified
     if translation_x != 0.0 or translation_y != 0.0 or translation_z != 0.0:
         translation_vector = np.array([translation_x, translation_y, translation_z])
         logger.debug(f"Applying mesh translation: {translation_vector}")
         transform_matrix = trimesh.transformations.translation_matrix(translation_vector)
-        trimesh_mesh.apply_transform(transform_matrix)
+        transformed_mesh.apply_transform(transform_matrix)
 
-    cog = None
-    if add_center_of_mass:
-        # Calculate COG from the (already transformed) trimesh object
-        cog = trimesh_mesh.center_mass
+    return transformed_mesh
+
+
+def _prepare_capytaine_body(
+    source_mesh: trimesh.Trimesh,
+    mesh_name: str,
+    lid: bool,
+    grid_symmetry: bool,
+    add_center_of_mass: bool = False,
+) -> tuple[Any, trimesh.Trimesh]:
+    """
+    Configures a Capytaine FloatingBody from a pre-prepared trimesh object.
+    """
+    cog = source_mesh.center_mass if add_center_of_mass else None
+    if cog is not None:
         logger.debug(f"Adding COG {cog}")
 
-    # 2. Create the Capytaine mesh from the transformed trimesh object.
-    hull_mesh = cpt.Mesh(
-        vertices=trimesh_mesh.vertices, faces=trimesh_mesh.faces, name=f"{Path(stl_file).stem}_mesh"
-    )
+    # 1. Save the transformed mesh to a temporary file and load it with Capytaine.
+    # This is more robust than creating a cpt.Mesh from vertices/faces directly.
+    # To avoid race conditions on file I/O, we create, write, close, and then
+    # read the temporary file in distinct steps.
+    fd, temp_path_str = tempfile.mkstemp(suffix=".stl")
+    temp_path = Path(temp_path_str)
+    try:
+        # Step 1: Write to the temporary file.
+        with open(fd, "wb") as f:
+            source_mesh.export(f, file_type="stl")
+        logger.debug(f"Exported transformed mesh to temporary file: {temp_path}")
+
+        # Step 2: Read from the now-closed temporary file.
+        hull_mesh = cpt.load_mesh(str(temp_path), name=mesh_name)
+
+    finally:
+        # Step 3: Ensure the temporary file is always deleted.
+        logger.debug(f"Deleting temporary file: {temp_path}")
+        temp_path.unlink()
+
+    # 4. Configure the Capytaine FloatingBody
     lid_mesh = hull_mesh.generate_lid(z=-0.01) if lid else None
     if grid_symmetry:
         logger.debug("Applying grid symmetery")
@@ -145,7 +171,7 @@ def _prepare_capytaine_body(
     boat.add_all_rigid_body_dofs()
     boat.keep_immersed_part()
 
-    # Extract the final mesh that Capytaine will use, after all transformations and immersion.
+    # 5. Extract the final mesh that Capytaine will use for the database.
     final_mesh_trimesh = trimesh.Trimesh(vertices=boat.mesh.vertices, faces=boat.mesh.faces)
 
     return boat, final_mesh_trimesh
@@ -210,7 +236,9 @@ def add_mesh_to_database(output_file: Path, mesh_to_add: trimesh.Trimesh, mesh_n
         logger.debug("  - Wrote dataset: inertia_tensor")
 
         # Store the binary content of the final, transformed STL
-        group.create_dataset("stl_content", data=new_stl_content)
+        # We must wrap the bytes in np.void to store it as opaque binary data,
+        # otherwise h5py tries to interpret it as a string and fails on NULL bytes.
+        group.create_dataset("stl_content", data=np.void(new_stl_content))
         logger.debug("  - Wrote dataset: stl_content")
 
 
@@ -312,14 +340,18 @@ def process_all_cases_for_one_stl(
     mesh_name_override: str | None = None,
 ) -> None:
     mesh_name = mesh_name_override or Path(stl_file).stem
-    boat, final_mesh = _prepare_capytaine_body(
-        stl_file,
-        lid=lid,
-        grid_symmetry=grid_symmetry,
-        add_center_of_mass=add_center_of_mass,
+
+    # 1. Prepare the base geometry with all transformations
+    trimesh_geometry = _prepare_trimesh_geometry(
+        stl_file=stl_file,
         translation_x=translation_x,
         translation_y=translation_y,
         translation_z=translation_z,
+    )
+
+    # 2. Use the prepared geometry to create the Capytaine body
+    boat, final_mesh = _prepare_capytaine_body(
+        source_mesh=trimesh_geometry, mesh_name=mesh_name, lid=lid, grid_symmetry=grid_symmetry, add_center_of_mass=add_center_of_mass
     )
 
     # Add the final, transformed, and immersed mesh to the database.
