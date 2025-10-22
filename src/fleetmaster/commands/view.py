@@ -1,13 +1,14 @@
 """CLI command for visualizing meshes from the HDF5 database."""
 
-import io
 import logging
+from itertools import cycle
 from pathlib import Path
 
 import click
 import h5py
 import numpy as np
 import trimesh
+from trimesh import Trimesh
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,14 @@ try:
 except ImportError:
     VTK_AVAILABLE = False
 
+from fleetmaster.core.io import load_meshes_from_hdf5
+
+VTK_COLORS = [
+    (0.8, 0.8, 1.0),  # Light Blue
+    (1.0, 0.8, 0.8),  # Light Red
+    (0.8, 1.0, 0.8),  # Light Green
+    (1.0, 1.0, 0.8),  # Light Yellow
+]
 
 def show_with_trimesh(mesh: trimesh.Trimesh) -> None:
     """Visualizes the mesh using the built-in trimesh viewer."""
@@ -28,7 +37,29 @@ def show_with_trimesh(mesh: trimesh.Trimesh) -> None:
     mesh.show()
 
 
-def show_with_vtk(meshes: list[trimesh.Trimesh]) -> None:
+def _vtk_actor_from_trimesh(mesh: trimesh.Trimesh, color: tuple[float, float, float]) -> vtk.vtkActor:
+    """Creates a VTK actor from a trimesh object."""
+    pts = vtk.vtkPoints()
+    pts.SetData(numpy_to_vtk(mesh.vertices, deep=True))
+
+    faces = np.hstack((np.full((len(mesh.faces), 1), 3), mesh.faces))
+    cells = vtk.vtkCellArray()
+    cells.SetCells(len(mesh.faces), numpy_to_vtk(faces.flatten(), array_type=vtk.VTK_ID_TYPE))
+
+    poly = vtk.vtkPolyData()
+    poly.SetPoints(pts)
+    poly.SetPolys(cells)
+
+    mapper = vtk.vtkPolyDataMapper()
+    mapper.SetInputData(poly)
+
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    actor.GetProperty().SetColor(color)
+    return actor
+
+
+def show_with_vtk(meshes: list[Trimesh]) -> None:
     """Visualizes the mesh using a VTK pipeline."""
     if not VTK_AVAILABLE:
         click.echo("❌ Error: The 'vtk' library is not installed. Please install it with 'pip install vtk'.")
@@ -37,33 +68,8 @@ def show_with_vtk(meshes: list[trimesh.Trimesh]) -> None:
     click.echo(f"🎨 Displaying {len(meshes)} mesh(es) with VTK viewer. Close the window to continue.")
     renderer = vtk.vtkRenderer()
     renderer.SetBackground(0.1, 0.2, 0.3)  # Dark blue/gray
-
-    # Define a list of colors for multiple meshes
-    colors = [
-        (0.8, 0.8, 1.0),  # Light Blue
-        (1.0, 0.8, 0.8),  # Light Red
-        (0.8, 1.0, 0.8),  # Light Green
-        (1.0, 1.0, 0.8),  # Light Yellow
-    ]
-
-    # 2. Loop through each mesh, create an actor, and add it to the renderer
-    for i, mesh in enumerate(meshes):
-        # Convert trimesh data to VTK format
-        vertices = mesh.vertices
-        faces = np.hstack((np.full((len(mesh.faces), 1), 3), mesh.faces)).flatten()
-        vtk_points = vtk.vtkPoints()
-        vtk_points.SetData(numpy_to_vtk(vertices, deep=True))
-        vtk_cells = vtk.vtkCellArray()
-        vtk_cells.SetCells(len(mesh.faces), numpy_to_vtk(faces, deep=True, array_type=vtk.VTK_ID_TYPE))
-        poly_data = vtk.vtkPolyData()
-        poly_data.SetPoints(vtk_points)
-        poly_data.SetPolys(vtk_cells)
-        mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputData(poly_data)
-        actor = vtk.vtkActor()
-        actor.SetMapper(mapper)
-        actor.GetProperty().SetColor(colors[i % len(colors)])
-        renderer.AddActor(actor)
+    for mesh, color in zip(meshes, cycle(VTK_COLORS)):
+        renderer.AddActor(_vtk_actor_from_trimesh(mesh, color))
 
     # Add a global axes actor at the origin
     axes_at_origin = vtk.vtkAxesActor()
@@ -96,60 +102,6 @@ def show_with_vtk(meshes: list[trimesh.Trimesh]) -> None:
     render_window_interactor.Start()
 
 
-def visualize_meshes_from_db(hdf5_path: str, mesh_names_to_show: list[str], use_vtk: bool) -> None:
-    """Loads one or more meshes from HDF5 databases and visualizes them in a single scene."""
-    loaded_meshes = []
-
-    db_file = Path(hdf5_path)
-    if not db_file.exists():
-        click.echo(f"❌ Error: Database file '{hdf5_path}' not found.", err=True)
-        return
-
-    for mesh_name in mesh_names_to_show:
-        found_mesh_data = None
-        mesh_group_path = f"meshes/{mesh_name}"
-        try:
-            logger.debug(f"Opening database {db_file}")
-            with h5py.File(db_file, "r") as f:
-                if mesh_group_path in f:
-                    click.echo(f"📦 Loading mesh '{mesh_name}' from '{hdf5_path}'...")
-                    found_mesh_data = f[mesh_group_path]["stl_content"][()]
-        except Exception as e:
-            logger.exception(f"Error reading mesh {mesh_group_path}' from '{hdf5_path}'")
-            click.echo(f"❌ Error reading '{hdf5_path}': {e}", err=True)
-            continue
-
-        if found_mesh_data:  # A non-empty numpy.void object evaluates to True.
-            try:
-                # The data is stored as a numpy.void object, which must be converted to bytes.
-                stl_bytes = found_mesh_data.tobytes()
-                if mesh := trimesh.load_mesh(
-                    io.BytesIO(stl_bytes), file_type="stl"
-                ):
-                    loaded_meshes.append(mesh)
-            except Exception as e:
-                logger.exception(f"Failed to parse mesh '{mesh_name}'")
-                click.echo(f"❌ Error parsing mesh '{mesh_name}': {e}", err=True)
-        else:
-            click.echo(f"❌ Warning: Mesh '{mesh_name}' not found in any of the specified files.", err=True)
-
-    if not loaded_meshes:
-        click.echo("No meshes were loaded. Nothing to display.", err=True)
-        return
-
-    if use_vtk:
-        show_with_vtk(loaded_meshes)
-    else:
-        click.echo(f"🎨 Displaying {len(loaded_meshes)} mesh(es) with trimesh viewer. Close the window to continue.")
-        # To avoid potential rendering glitches with the scene object,
-        # we create a scene with an axis and pass the meshes to show directly.
-        axis = trimesh.creation.axis(origin_size=0.1)
-        scene = trimesh.Scene([axis, *loaded_meshes])
-
-        logger.debug("Showing with solid mode. Toggle with w/s to go to wireframe")
-        scene.show()
-
-
 @click.command(name="view", help="Visualize meshes from an HDF5 database file.")
 @click.argument("hdf5_file", type=click.Path(exists=True, dir_okay=False, resolve_path=True))
 @click.argument("mesh_names", nargs=-1)
@@ -159,8 +111,8 @@ def view(hdf5_file: str, mesh_names: tuple[str, ...], vtk: bool, show_all: bool)
     """
     CLI command to load and visualize meshes from HDF5 databases.
 
-    HDF5_FILE: Path to the HDF5 database file. [MESH_NAMES]...: Optional names
-    of meshes or cases to visualize.
+    HDF5_FILE: Path to the HDF5 database file.
+    [MESH_NAMES]...: Optional names of meshes or cases to visualize.
     """
     # The HDF5 file is now a required positional argument.
     # Mesh names are optional positional arguments.
@@ -199,4 +151,19 @@ def view(hdf5_file: str, mesh_names: tuple[str, ...], vtk: bool, show_all: bool)
         )
         return
 
-    visualize_meshes_from_db(hdf5_file, sorted(resolved_mesh_names), vtk)
+    meshes = load_meshes_from_hdf5(Path(hdf5_file), sorted(resolved_mesh_names))
+    if not meshes:
+        click.echo("No valid meshes could be loaded from the database.", err=True)
+        return
+
+    if vtk:
+        show_with_vtk(meshes)
+    else:
+        click.echo(f"🎨 Displaying {len(meshes)} mesh(es) with trimesh viewer. Close the window to continue.")
+        # To avoid potential rendering glitches with the scene object,
+        # we create a scene with an axis and pass the meshes to show directly.
+        axis = trimesh.creation.axis(origin_size=0.1)
+        scene = trimesh.Scene([axis, *meshes])
+
+        logger.debug("Showing with solid mode. Toggle with w/s to go to wireframe")
+        scene.show()
