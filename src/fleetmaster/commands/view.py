@@ -118,7 +118,7 @@ def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str
                 click.echo(f"❌ Error reading '{hdf5_path}': {e}", err=True)
                 continue
 
-        if found_mesh_data is not None and found_mesh_data.size > 0: # Check for non-None and non-empty array
+        if found_mesh_data is not None and len(found_mesh_data) > 0:  # A bytes object has no .size, use len()
             stl_file_in_memory = io.BytesIO(found_mesh_data)
             mesh = trimesh.load_mesh(stl_file_in_memory, file_type="stl")
             loaded_meshes.append(mesh)
@@ -156,25 +156,15 @@ def view(mesh_names: tuple[str, ...], hdf5_files: tuple[str, ...], vtk: bool, sh
 
     You can specify mesh names as arguments or use --show-all.
     """
-    # --- Smartly separate file paths from mesh names ---
-    all_args = list(mesh_names) + list(hdf5_files)
-    
-    files_to_check = {arg for arg in all_args if arg.endswith((".hdf5", ".h5"))}
-    meshes_to_show = {arg for arg in all_args if not arg.endswith((".hdf5", ".h5"))}
-
-    # If the user provided file paths but also left the default --file value, remove the default.
-    # This happens if they provide a path as a positional argument without using -f.
-    if files_to_check and "results.hdf5" in hdf5_files and len(hdf5_files) == 1:
-        ctx = click.get_current_context()
-        if ctx.get_parameter_source("hdf5_files") == click.core.ParameterSource.DEFAULT:
-             # The user didn't explicitly type '--file results.hdf5', so we can ignore it
-             # if other files were found.
-             pass # The default is implicitly overridden by the positional file args.
-    elif not files_to_check:
-        files_to_check = set(hdf5_files) # Use the default or user-provided --file
+    # Simplified and predictable logic:
+    # Positional arguments are mesh names.
+    # --file/-f arguments are HDF5 files.
+    files_to_check = set(hdf5_files)
+    meshes_to_show = set(mesh_names)
 
     if show_all:
-        all_found_meshes = set()
+        # If --show-all, we ignore any provided mesh names and find all meshes in the specified files.
+        meshes_to_show = set()
         for hdf5_path in files_to_check:
             db_file = Path(hdf5_path)
             if not db_file.exists():
@@ -183,13 +173,12 @@ def view(mesh_names: tuple[str, ...], hdf5_files: tuple[str, ...], vtk: bool, sh
             with h5py.File(db_file, "r") as f:
                 meshes_to_show.update(f.get("meshes", {}).keys())
 
-    # Remove duplicates
     final_meshes_to_show = sorted(list(meshes_to_show))
     final_files_to_check = list(files_to_check)
-    
-    if not meshes_to_show:
+
+    if not final_meshes_to_show:
         click.echo("No mesh names provided and no meshes found with --show-all.", err=True)
-        click.echo("Usage: fleetmaster view [MESH_NAME...] [--file <path>] or fleetmaster view --show-all", err=True)
+        click.echo("Usage: fleetmaster view [MESH_NAME...] --file <path>  OR  fleetmaster view --show-all --file <path>", err=True)
         return
 
     visualize_meshes_from_db(final_files_to_check, final_meshes_to_show, vtk)

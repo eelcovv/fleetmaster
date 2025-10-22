@@ -58,11 +58,20 @@ def list_items_in_db(hdf5_paths: list[str], show_cases: bool):
                             if stl_content_dataset:
                                 try:
                                     # When stored correctly, h5py returns a bytes object directly.
-                                    stl_bytes = stl_content_dataset[()]
-                                    mesh: Trimesh = trimesh.load_mesh(io.BytesIO(stl_bytes), file_type="stl") # type: ignore
+                                    stl_data = stl_content_dataset[()]
+                                    try:
+                                        # New, correct way: data is already bytes
+                                        stl_bytes = stl_data
+                                    except AttributeError:
+                                        # Old way: data was a numpy.void object, needs conversion
+                                        stl_bytes = stl_data.tobytes()
+                                    mesh: Trimesh = trimesh.load_mesh(io.BytesIO(stl_bytes), file_type="stl")
+                                    if mesh is None:
+                                        raise ValueError("trimesh.load_mesh returned None, failed to parse STL.")
+
                                     num_faces = len(mesh.faces)
                                     bounds = mesh.bounding_box.bounds
-                                except (ValueError, IOError, TypeError) as e:
+                                except (ValueError, IOError, TypeError, AttributeError) as e:
                                     logger.debug(f"Failed to parse STL content for mesh '{mesh_name}': {e}")
                                     click.echo(f"      Could not parse stored STL content: {e}")
 

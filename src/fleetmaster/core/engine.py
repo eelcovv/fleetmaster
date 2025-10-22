@@ -114,29 +114,32 @@ def _prepare_capytaine_body(
 ) -> tuple[Any, trimesh.Trimesh]:
     """
     Load an STL file and configure a Capytaine FloatingBody object.
+    The geometry is first loaded and transformed using trimesh, then passed to Capytaine.
     """
-    hull_mesh = cpt.load_mesh(stl_file)
+    # 1. Load the mesh with trimesh to perform transformations.
+    trimesh_mesh = trimesh.load_mesh(stl_file)
 
     # Apply translation if specified
     if translation_x != 0.0 or translation_y != 0.0 or translation_z != 0.0:
         translation_vector = np.array([translation_x, translation_y, translation_z])
         logger.debug(f"Applying mesh translation: {translation_vector}")
-        hull_mesh = hull_mesh.transform(translation_vector=translation_vector)
-
-    lid_mesh = hull_mesh.generate_lid(z=-0.01) if lid else None
-
-    if grid_symmetry:
-        logger.debug("Applying grid symmetery")
-        hull_mesh = cpt.ReflectionSymmetricMesh(hull_mesh, plane=cpt.xOz_Plane, name=f"{Path(stl_file).stem}_mesh")
+        transform_matrix = trimesh.transformations.translation_matrix(translation_vector)
+        trimesh_mesh.apply_transform(transform_matrix)
 
     cog = None
     if add_center_of_mass:
-        full_mesh = trimesh.load_mesh(stl_file)
-        if translation_x != 0.0 or translation_y != 0.0 or translation_z != 0.0:
-            transform_matrix = trimesh.transformations.translation_matrix([translation_x, translation_y, translation_z])
-            full_mesh.apply_transform(transform_matrix)
-        cog = full_mesh.center_mass
+        # Calculate COG from the (already transformed) trimesh object
+        cog = trimesh_mesh.center_mass
         logger.debug(f"Adding COG {cog}")
+
+    # 2. Create the Capytaine mesh from the transformed trimesh object.
+    hull_mesh = cpt.Mesh(
+        vertices=trimesh_mesh.vertices, faces=trimesh_mesh.faces, name=f"{Path(stl_file).stem}_mesh"
+    )
+    lid_mesh = hull_mesh.generate_lid(z=-0.01) if lid else None
+    if grid_symmetry:
+        logger.debug("Applying grid symmetery")
+        hull_mesh = cpt.ReflectionSymmetricMesh(hull_mesh, plane=cpt.xOz_Plane)
 
     boat = cpt.FloatingBody(mesh=hull_mesh, lid_mesh=lid_mesh, center_of_mass=cog)
     boat.add_all_rigid_body_dofs()
