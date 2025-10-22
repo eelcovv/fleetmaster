@@ -227,6 +227,7 @@ source = ["src"]
     "mkdocs",
     "mkdocs-material",
     "mkdocstrings",
+    "pyglet",
     "types-PyYAML",
 ]
 
