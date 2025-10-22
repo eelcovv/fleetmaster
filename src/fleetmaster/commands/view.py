@@ -130,7 +130,7 @@ def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str
         return
 
     if use_vtk:
-        show_with_vtk(loaded_meshes, mode)
+        show_with_vtk(loaded_meshes)
     else:
         click.echo(f"🎨 Displaying {len(loaded_meshes)} mesh(es) with trimesh viewer. Close the window to continue.")
         # Create a scene and add an axis marker at the origin
@@ -140,19 +140,8 @@ def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str
         # Add all meshes to the scene
         scene.add_geometry(loaded_meshes)
 
-        # For the default trimesh viewer, we can request wireframe mode before showing.
-        # The user can still toggle it with the 'w' key.
-        if mode == "wireframe":
-            logger.debug("Showing with wireframe mode. Note: 'w' key might not toggle back to solid.")
-            # Replace solid meshes with their wireframe outlines for rendering
-            wireframe_geometries = [mesh.outline() for mesh in loaded_meshes]
-            scene.geometry.clear()
-            scene.add_geometry(trimesh.creation.axis(origin_size=0.05))
-            scene.add_geometry(wireframe_geometries)
-            scene.show()
-        else:
-            logger.debug("Showing with solid mode. Toggle with w/s to go to wireframe")
-            scene.show()
+        logger.debug("Showing with solid mode. Toggle with w/s to go to wireframe")
+        scene.show()
 
 
 @click.command(name="view", help="Visualize one or more meshes from HDF5 database files.")
@@ -161,8 +150,7 @@ def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str
               help="Path to one or more HDF5 database files. Can be specified multiple times.")
 @click.option("--vtk", is_flag=True, help="Use the VTK viewer instead of the default trimesh viewer.")
 @click.option("--show-all", is_flag=True, help="Visualize all meshes found in the specified files.")
-@click.option("--mode", type=click.Choice(["solid", "wireframe"]), default="solid", help="Visualization mode.", show_default=True)
-def view(mesh_names: tuple[str, ...], hdf5_files: tuple[str, ...], vtk: bool, show_all: bool, mode: str):
+def view(mesh_names: tuple[str, ...], hdf5_files: tuple[str, ...], vtk: bool, show_all: bool):
     """
     CLI command to load and visualize meshes from HDF5 databases.
 
