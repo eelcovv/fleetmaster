@@ -150,6 +150,31 @@ def test_prepare_capytaine_body(mock_tempfile, mock_cpt, tmp_path: Path):
     assert body == mock_body
 
 
+@patch("fleetmaster.core.engine.cpt")
+@patch("fleetmaster.core.engine.tempfile")
+def test_prepare_capytaine_body_with_symmetry(mock_tempfile, mock_cpt, tmp_path: Path):
+    """Test that grid_symmetry correctly wraps the mesh in ReflectionSymmetricMesh."""
+    # Arrange
+    mock_source_mesh = MagicMock(spec=trimesh.Trimesh)
+    temp_file_path = tmp_path / "temp.stl"
+    mock_tempfile.mkstemp.return_value = (123, str(temp_file_path))
+
+    mock_base_hull_mesh = MagicMock()
+    mock_cpt.load_mesh.return_value = mock_base_hull_mesh
+
+    mock_symmetric_mesh = MagicMock()
+    mock_cpt.ReflectionSymmetricMesh.return_value = mock_symmetric_mesh
+
+    # Act
+    _prepare_capytaine_body(source_mesh=mock_source_mesh, mesh_name="test_mesh", lid=False, grid_symmetry=True)
+
+    # Assert
+    # Check that ReflectionSymmetricMesh was called with the base mesh
+    mock_cpt.ReflectionSymmetricMesh.assert_called_once_with(mock_base_hull_mesh, plane=mock_cpt.xOz_Plane)
+    # Check that the FloatingBody was created with the *symmetric* mesh
+    mock_cpt.FloatingBody.assert_called_once_with(mesh=mock_symmetric_mesh, lid_mesh=None, center_of_mass=None)
+
+
 def test_add_mesh_to_database_new(tmp_path):
     """Test adding a new mesh to the HDF5 database."""
     output_file = tmp_path / "db.h5"
