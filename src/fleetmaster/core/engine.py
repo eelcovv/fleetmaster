@@ -1,3 +1,4 @@
+import os
 import hashlib
 import logging
 import tempfile
@@ -143,23 +144,23 @@ def _prepare_capytaine_body(
 
     # 1. Save the transformed mesh to a temporary file and load it with Capytaine.
     # This is more robust than creating a cpt.Mesh from vertices/faces directly.
-    # To avoid race conditions on file I/O, we create, write, close, and then
-    # read the temporary file in distinct steps.
-    fd, temp_path_str = tempfile.mkstemp(suffix=".stl")
-    temp_path = Path(temp_path_str)
+    # We use NamedTemporaryFile to handle creation and cleanup automatically.
+    temp_path = None
     try:
-        # Step 1: Write to the temporary file.
-        with open(fd, "wb") as f:
-            source_mesh.export(f, file_type="stl")
-        logger.debug(f"Exported transformed mesh to temporary file: {temp_path}")
+        with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as temp_file:
+            temp_path = Path(temp_file.name)
+            # Step 1: Write to the temporary file.
+            source_mesh.export(temp_file, file_type="stl")
+            logger.debug(f"Exported transformed mesh to temporary file: {temp_path}")
 
-        # Step 2: Read from the now-closed temporary file.
+        # Step 2: Read from the now-closed temporary file. This avoids race conditions.
         hull_mesh = cpt.load_mesh(str(temp_path), name=mesh_name)
 
     finally:
-        # Step 3: Ensure the temporary file is always deleted.
-        logger.debug(f"Deleting temporary file: {temp_path}")
-        temp_path.unlink()
+        # Step 3: Ensure the temporary file is always deleted, even if an error occurs.
+        if temp_path and temp_path.exists():
+            logger.debug(f"Deleting temporary file: {temp_path}")
+            temp_path.unlink()
 
     # 4. Configure the Capytaine FloatingBody
     lid_mesh = hull_mesh.generate_lid(z=-0.01) if lid else None

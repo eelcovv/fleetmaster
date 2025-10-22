@@ -1,7 +1,9 @@
 import hashlib
 import logging
+import os
 from pathlib import Path
 from unittest.mock import ANY, MagicMock, call, patch
+import trimesh
 
 import h5py
 import numpy as np
@@ -104,24 +106,42 @@ def test_setup_output_file_no_overwrite(tmp_path, mock_settings):
 
 
 @patch("fleetmaster.core.engine.cpt")
-@patch("fleetmaster.core.engine.trimesh")
-def test_prepare_capytaine_body(mock_trimesh, mock_cpt):
+@patch("fleetmaster.core.engine.tempfile")
+def test_prepare_capytaine_body(mock_tempfile, mock_cpt, tmp_path: Path):
     """Test _prepare_capytaine_body configures the body correctly."""
+    # Arrange
+    mock_source_mesh = MagicMock(spec=trimesh.Trimesh)
+    mock_source_mesh.center_mass = [1, 2, 3]
+
+    # Create a real temporary file path for the test to use
+    temp_file_path = tmp_path / "temp.stl"
+    mock_tempfile.mkstemp.return_value = (123, str(temp_file_path))
+
     mock_hull_mesh = MagicMock()
     mock_cpt.load_mesh.return_value = mock_hull_mesh
-    mock_trimesh_mesh = MagicMock()
-    mock_trimesh_mesh.center_mass = [1, 2, 3]
-    mock_trimesh.load_mesh.return_value = mock_trimesh_mesh
+
     mock_body = MagicMock()
     mock_cpt.FloatingBody.return_value = mock_body
 
-    stl_file = "test.stl" # noqa: S108
-    body, _ = _prepare_capytaine_body(stl_file, lid=True, grid_symmetry=True, add_center_of_mass=True)
+    # To make `isinstance(boat.mesh, cpt.meshes.ReflectionSymmetricMesh)` work,
+    # we define a dummy class and configure the mock to use it.
+    class DummySymmetricMesh:
+        def to_mesh(self):
+            return MagicMock()
 
-    mock_cpt.load_mesh.assert_called_once_with(stl_file)
+    mock_cpt.meshes.ReflectionSymmetricMesh = DummySymmetricMesh
+    mock_cpt.ReflectionSymmetricMesh.return_value = DummySymmetricMesh()
+    
+    # Act
+    body, _ = _prepare_capytaine_body(
+        source_mesh=mock_source_mesh, mesh_name="test_mesh", lid=True, grid_symmetry=True, add_center_of_mass=True
+    )
+
+    # Assert
+    mock_source_mesh.export.assert_called_once()
+    mock_cpt.load_mesh.assert_called_once()
     mock_hull_mesh.generate_lid.assert_called_once()
     mock_cpt.ReflectionSymmetricMesh.assert_called_once()
-    mock_trimesh.load_mesh.assert_called_once_with(stl_file)
     mock_cpt.FloatingBody.assert_called_once_with(
         mesh=ANY, lid_mesh=mock_hull_mesh.generate_lid.return_value, center_of_mass=[1, 2, 3]
     )
@@ -133,18 +153,16 @@ def test_prepare_capytaine_body(mock_trimesh, mock_cpt):
 def test_add_mesh_to_database_new(tmp_path):
     """Test adding a new mesh to the HDF5 database."""
     output_file = tmp_path / "db.h5"
-    stl_file = tmp_path / "mesh.stl"
-    stl_content = b"This is a dummy stl file"
-    stl_file.write_bytes(stl_content)
+    stl_content = b"This is a dummy stl file content"
 
-    mock_mesh = MagicMock()
+    mock_mesh = MagicMock(spec=trimesh.Trimesh)
     mock_mesh.volume = 1.0
     mock_mesh.center_mass = [0.1, 0.2, 0.3]
     mock_mesh.bounding_box.extents = [1.0, 2.0, 3.0]
     mock_mesh.moment_inertia = np.eye(3)
+    mock_mesh.export.return_value = stl_content
 
-    with patch("fleetmaster.core.engine.trimesh.load_mesh", return_value=mock_mesh):
-        add_mesh_to_database(output_file, str(stl_file), overwrite=False)
+    add_mesh_to_database(output_file, mock_mesh, "mesh", overwrite=False)
 
     with h5py.File(output_file, "r") as f:
         group = f["meshes/mesh"]
@@ -159,17 +177,18 @@ def test_add_mesh_to_database_new(tmp_path):
 def test_add_mesh_to_database_skip_existing(tmp_path, caplog):
     """Test that an existing mesh with the same hash is skipped."""
     output_file = tmp_path / "db.h5"
-    stl_file = tmp_path / "mesh.stl"
     stl_content = b"dummy stl"
-    stl_file.write_bytes(stl_content)
     file_hash = hashlib.sha256(stl_content).hexdigest()
+
+    mock_mesh = MagicMock(spec=trimesh.Trimesh)
+    mock_mesh.export.return_value = stl_content
 
     with h5py.File(output_file, "w") as f:
         group = f.create_group("meshes/mesh")
         group.attrs["sha256"] = file_hash
 
     with caplog.at_level(logging.INFO):
-        add_mesh_to_database(output_file, str(stl_file), overwrite=False)
+        add_mesh_to_database(output_file, mock_mesh, "mesh", overwrite=False)
 
     assert "has the same SHA256 hash. Skipping." in caplog.text
 
@@ -177,15 +196,15 @@ def test_add_mesh_to_database_skip_existing(tmp_path, caplog):
 def test_add_mesh_to_database_overwrite_warning(tmp_path, caplog):
     """Test warning when mesh is different and overwrite is False."""
     output_file = tmp_path / "db.h5"
-    stl_file = tmp_path / "mesh.stl"
-    stl_file.write_bytes(b"new content")
+    mock_mesh = MagicMock(spec=trimesh.Trimesh)
+    mock_mesh.export.return_value = b"new content"
 
     with h5py.File(output_file, "w") as f:
         group = f.create_group("meshes/mesh")
         group.attrs["sha256"] = "old_hash"
 
     with caplog.at_level(logging.WARNING):
-        add_mesh_to_database(output_file, str(stl_file), overwrite=False)
+        add_mesh_to_database(output_file, mock_mesh, "mesh", overwrite=False)
 
     assert "is different from the one in the database" in caplog.text
 
@@ -210,15 +229,13 @@ def test_generate_case_group_name():
 
 
 @patch("fleetmaster.core.engine.process_all_cases_for_one_stl")
-@patch("fleetmaster.core.engine.add_mesh_to_database")
-def test_process_single_stl(mock_add_mesh, mock_process_all, mock_settings):
+def test_process_single_stl(mock_process_all, mock_settings):
     """Test the main processing pipeline for a single STL file."""
     stl_file = "/path/to/dummy.stl"
     output_file = Path("/fake/output.hdf5")
 
     _process_single_stl(stl_file, mock_settings, output_file)
 
-    mock_add_mesh.assert_called_once_with(output_file, stl_file, mock_settings.overwrite_meshes)
     mock_process_all.assert_called_once()
     _, kwargs = mock_process_all.call_args
     assert kwargs["stl_file"] == stl_file
@@ -245,46 +262,42 @@ def test_run_simulation_batch_standard(mock_setup, mock_process, mock_settings):
 
     mock_setup.assert_called_once_with(mock_settings)
     assert mock_process.call_count == 2
-    mock_process.assert_has_calls([
-        call("file1.stl", mock_settings, output_file),
-        call("file2.stl", mock_settings, output_file),
-    ])
+    mock_process.assert_has_calls(
+        [
+            call("file1.stl", mock_settings, output_file, mesh_name_override=None),
+            call("file2.stl", mock_settings, output_file, mesh_name_override=None),
+        ]
+    )
 
 
-@patch("fleetmaster.core.engine.tempfile.TemporaryDirectory")
-@patch("fleetmaster.core.engine.trimesh")
 @patch("fleetmaster.core.engine._process_single_stl")
 @patch("fleetmaster.core.engine._setup_output_file", autospec=True)
-def test_run_simulation_batch_drafts(
-    mock_setup, mock_process, mock_trimesh, mock_tempfile, mock_settings, tmp_path: Path
-):
+def test_run_simulation_batch_drafts(mock_setup, mock_process, mock_settings, tmp_path: Path):
     """Test run_simulation_batch in draft generation mode."""
     # Arrange
     mock_setup.return_value = tmp_path / "output.hdf5"
-    mock_tempfile.return_value.__enter__.return_value = str(tmp_path / "temp")
-    (tmp_path / "temp").mkdir()
-
-    mock_mesh = MagicMock()
-    mock_trimesh.load_mesh.return_value = mock_mesh
-    mock_trimesh.transformations.translation_matrix.return_value = np.eye(4)
 
     mock_settings.stl_files = ["base_mesh.stl"]
     mock_settings.drafts = [1.0, 2.5]
+    mock_settings.translation_z = 5.0
 
     # Act
     run_simulation_batch(mock_settings)
 
     # Assert
-    assert mock_trimesh.load_mesh.call_count == 2
-    assert mock_mesh.apply_transform.call_count == 2
-    assert mock_mesh.export.call_count == 2
-
-    # Check that the generated files are processed
     assert mock_process.call_count == 2
-    expected_path1 = str(tmp_path / "temp" / "base_mesh_draft_1.stl")
-    expected_path2 = str(tmp_path / "temp" / "base_mesh_draft_2.5.stl")
-    mock_process.assert_any_call(expected_path1, mock_settings, mock_setup.return_value)
-    mock_process.assert_any_call(expected_path2, mock_settings, mock_setup.return_value)
+
+    # Check call for first draft
+    args1, kwargs1 = mock_process.call_args_list[0]
+    assert args1[0] == "base_mesh.stl"
+    assert args1[1].translation_z == 4.0  # 5.0 - 1.0
+    assert kwargs1["mesh_name_override"] == "base_mesh_draft_1"
+
+    # Check call for second draft
+    args2, kwargs2 = mock_process.call_args_list[1]
+    assert args2[0] == "base_mesh.stl"
+    assert args2[1].translation_z == 2.5  # 5.0 - 2.5
+    assert kwargs2["mesh_name_override"] == "base_mesh_draft_2.5"
 
 
 def test_run_simulation_batch_drafts_wrong_stl_count(mock_settings):
