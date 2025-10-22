@@ -158,27 +158,42 @@ def view(hdf5_file: str, mesh_names: tuple[str, ...], vtk: bool, show_all: bool)
     """
     CLI command to load and visualize meshes from HDF5 databases.
 
-    HDF5_FILE: Path to the HDF5 database file.
-    [MESH_NAMES]...: Optional names of meshes to visualize.
+    HDF5_FILE: Path to the HDF5 database file. [MESH_NAMES]...: Optional names
+    of meshes or cases to visualize.
     """
     # The HDF5 file is now a required positional argument.
     # Mesh names are optional positional arguments.
-    meshes_to_show = set(mesh_names)
+    names_to_resolve = set(mesh_names)
+    resolved_mesh_names = set()
 
     if show_all:
         # If --show-all, we ignore any provided mesh names and find all meshes in the specified files.
-        meshes_to_show = set()
+        names_to_resolve = set()
         db_file = Path(hdf5_file)
-        if db_file.exists():
-            with h5py.File(db_file, "r") as f:
-                meshes_to_show.update(f.get("meshes", {}).keys())
-        else:
-            click.echo(f"❌ Error: Database file '{hdf5_file}' not found.", err=True)
-            return
+        with h5py.File(db_file, "r") as f:
+            resolved_mesh_names.update(f.get("meshes", {}).keys())
 
-    if not meshes_to_show:
+    elif names_to_resolve:
+        # Resolve provided names: they can be mesh names or case names.
+        with h5py.File(hdf5_file, "r") as f:
+            for name in names_to_resolve:
+                # Check if it's a direct mesh name
+                if f.get(f"meshes/{name}"):
+                    resolved_mesh_names.add(name)
+                    logger.debug(f"Resolved '{name}' as a direct mesh name.")
+                # Check if it's a case name
+                elif (case_group := f.get(name)) and (mesh_name := case_group.attrs.get("stl_mesh_name")):
+                    resolved_mesh_names.add(mesh_name)
+                    logger.debug(f"Resolved case '{name}' to mesh '{mesh_name}'.")
+                else:
+                    click.echo(
+                        f"❌ Warning: Could not resolve '{name}' as a mesh or a case name.",
+                        err=True,
+                    )
+
+    if not resolved_mesh_names:
         click.echo("No mesh names provided and no meshes found with --show-all.", err=True)
         click.echo("Usage: fleetmaster view <HDF5_FILE> [MESH_NAME...]  OR  fleetmaster view <HDF5_FILE> --show-all", err=True)
         return
 
-    visualize_meshes_from_db(hdf5_file, sorted(list(meshes_to_show)), vtk)
+    visualize_meshes_from_db(hdf5_file, sorted(list(resolved_mesh_names)), vtk)
