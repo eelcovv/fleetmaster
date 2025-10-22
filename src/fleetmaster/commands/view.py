@@ -123,8 +123,9 @@ def visualize_meshes_from_db(hdf5_path: str, mesh_names_to_show: list[str], use_
             try:
                 # The data is stored as a numpy.void object, which must be converted to bytes.
                 stl_bytes = found_mesh_data.tobytes()
-                mesh = trimesh.load_mesh(io.BytesIO(stl_bytes), file_type="stl")
-                if mesh:
+                if mesh := trimesh.load_mesh(
+                    io.BytesIO(stl_bytes), file_type="stl"
+                ):
                     loaded_meshes.append(mesh)
             except Exception as e:
                 logger.exception(f"Failed to parse mesh '{mesh_name}'")
