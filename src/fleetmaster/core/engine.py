@@ -1,4 +1,3 @@
-import os
 import hashlib
 import logging
 import tempfile
@@ -183,7 +182,9 @@ def _prepare_capytaine_body(
     return boat, final_mesh_trimesh
 
 
-def add_mesh_to_database(output_file: Path, mesh_to_add: trimesh.Trimesh, mesh_name: str, overwrite: bool = False) -> None:
+def add_mesh_to_database(
+    output_file: Path, mesh_to_add: trimesh.Trimesh, mesh_name: str, overwrite: bool = False
+) -> None:
     """
     Adds a mesh and its geometric properties to the HDF5 database under the MESH_GROUP_NAME.
 
@@ -257,7 +258,7 @@ def _format_value_for_name(value: float) -> str:
     return f"{value:.1f}"
 
 
-def _generate_case_group_name(mesh_name: str, water_depth: float, water_level: float, forward_speed: float) -> str:  # noqa: E501
+def _generate_case_group_name(mesh_name: str, water_depth: float, water_level: float, forward_speed: float) -> str:
     """Generates a descriptive group name for a specific simulation case."""
     wd = _format_value_for_name(water_depth)
     wl = _format_value_for_name(water_level)
@@ -265,7 +266,9 @@ def _generate_case_group_name(mesh_name: str, water_depth: float, water_level: f
     return f"{mesh_name}_wd_{wd}_wl_{wl}_fs_{fs}"
 
 
-def _process_single_stl(stl_file: str, settings: SimulationSettings, output_file: Path, mesh_name_override: str | None = None) -> None:
+def _process_single_stl(
+    stl_file: str, settings: SimulationSettings, output_file: Path, mesh_name_override: str | None = None
+) -> None:
     """
     Run the complete processing pipeline for a single STL file.
     """
@@ -357,7 +360,11 @@ def process_all_cases_for_one_stl(
 
     # 2. Use the prepared geometry to create the Capytaine body
     boat, final_mesh = _prepare_capytaine_body(
-        source_mesh=trimesh_geometry, mesh_name=mesh_name, lid=lid, grid_symmetry=grid_symmetry, add_center_of_mass=add_center_of_mass
+        source_mesh=trimesh_geometry,
+        mesh_name=mesh_name,
+        lid=lid,
+        grid_symmetry=grid_symmetry,
+        add_center_of_mass=add_center_of_mass,
     )
 
     # Add the final, transformed, and immersed mesh to the database.

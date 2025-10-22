@@ -1,11 +1,11 @@
 """CLI command for visualizing meshes from the HDF5 database."""
 
-import h5py
 import io
 import logging
 from pathlib import Path
 
 import click
+import h5py
 import numpy as np
 import trimesh
 
@@ -144,7 +144,7 @@ def visualize_meshes_from_db(hdf5_path: str, mesh_names_to_show: list[str], use_
         # we create a scene with an axis and pass the meshes to show directly.
         axis = trimesh.creation.axis(origin_size=0.1)
         scene = trimesh.Scene([axis] + loaded_meshes)
-        
+
         logger.debug("Showing with solid mode. Toggle with w/s to go to wireframe")
         scene.show()
 
@@ -193,7 +193,9 @@ def view(hdf5_file: str, mesh_names: tuple[str, ...], vtk: bool, show_all: bool)
 
     if not resolved_mesh_names:
         click.echo("No mesh names provided and no meshes found with --show-all.", err=True)
-        click.echo("Usage: fleetmaster view <HDF5_FILE> [MESH_NAME...]  OR  fleetmaster view <HDF5_FILE> --show-all", err=True)
+        click.echo(
+            "Usage: fleetmaster view <HDF5_FILE> [MESH_NAME...]  OR  fleetmaster view <HDF5_FILE> --show-all", err=True
+        )
         return
 
     visualize_meshes_from_db(hdf5_file, sorted(list(resolved_mesh_names)), vtk)

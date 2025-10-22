@@ -1,16 +1,16 @@
 """CLI command for listing meshes from HDF5 databases."""
 
-import h5py
 import io
 import logging
 from pathlib import Path
 
 import click
+import h5py
 import trimesh
 from trimesh import Trimesh
 
-
 logger = logging.getLogger(__name__)
+
 
 def list_items_in_db(hdf5_paths: list[str], show_cases: bool):
     """
@@ -71,7 +71,7 @@ def list_items_in_db(hdf5_paths: list[str], show_cases: bool):
 
                                     num_faces = len(mesh.faces)
                                     bounds = mesh.bounding_box.bounds
-                                except (ValueError, IOError, TypeError, AttributeError) as e:
+                                except (OSError, ValueError, TypeError, AttributeError) as e:
                                     logger.debug(f"Failed to parse STL content for mesh '{mesh_name}': {e}")
                                     click.echo(f"      Could not parse stored STL content: {e}")
 
@@ -88,8 +88,12 @@ def list_items_in_db(hdf5_paths: list[str], show_cases: bool):
                                 else f"      BBox Dims (Lx,Ly,Lz): ({lx}, {ly}, {lz})"
                             )
                             if bounds is not None:
-                                click.echo(f"      BBox Min (x,y,z): ({bounds[0][0]:.3f}, {bounds[0][1]:.3f}, {bounds[0][2]:.3f})")
-                                click.echo(f"      BBox Max (x,y,z): ({bounds[1][0]:.3f}, {bounds[1][1]:.3f}, {bounds[1][2]:.3f})")
+                                click.echo(
+                                    f"      BBox Min (x,y,z): ({bounds[0][0]:.3f}, {bounds[0][1]:.3f}, {bounds[0][2]:.3f})"
+                                )
+                                click.echo(
+                                    f"      BBox Max (x,y,z): ({bounds[1][0]:.3f}, {bounds[1][1]:.3f}, {bounds[1][2]:.3f})"
+                                )
                         else:
                             click.echo("      Mesh properties not found in database.")
                 else:
@@ -111,7 +115,11 @@ def list_items_in_db(hdf5_paths: list[str], show_cases: bool):
 @click.command(name="list", help="List all meshes available in one or more HDF5 database files.")
 @click.argument("files", nargs=-1, type=click.Path())
 @click.option(
-    "--file", "-f", "option_files", multiple=True, help="Path to one or more HDF5 database files. Can be specified multiple times."
+    "--file",
+    "-f",
+    "option_files",
+    multiple=True,
+    help="Path to one or more HDF5 database files. Can be specified multiple times.",
 )
 @click.option("--cases", is_flag=True, help="List simulation cases and their properties instead of meshes.")
 def list_command(files: tuple[str, ...], option_files: tuple[str, ...], cases: bool):

@@ -1,23 +1,25 @@
+import argparse
+import io
+from pathlib import Path
 
 import h5py
 import trimesh
-import io
-import sys
-import argparse
-from pathlib import Path
 
 # Try to import vtk, but make it an optional dependency
 try:
     import vtk
-    from vtk.util.numpy_support import vtk_to_numpy, numpy_to_vtk
+    from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
+
     VTK_AVAILABLE = True
 except ImportError:
     VTK_AVAILABLE = False
+
 
 def show_with_trimesh(mesh: trimesh.Trimesh):
     """Visualizes the mesh using the built-in trimesh viewer."""
     print("🎨 Displaying mesh with trimesh viewer. Close the window to continue.")
     mesh.show()
+
 
 def show_with_vtk(mesh: trimesh.Trimesh):
     """Visualizes the mesh using a VTK pipeline."""
@@ -68,7 +70,7 @@ def show_with_vtk(mesh: trimesh.Trimesh):
     widget = vtk.vtkOrientationMarkerWidget()
     widget.SetOutlineColor(0.9300, 0.5700, 0.1300)
     widget.SetOrientationMarker(axes)
-    
+
     # RenderWindow: The window on the screen
     render_window = vtk.vtkRenderWindow()
     render_window.AddRenderer(renderer)
@@ -78,7 +80,7 @@ def show_with_vtk(mesh: trimesh.Trimesh):
     # Interactor: Handles mouse and keyboard interaction
     render_window_interactor = vtk.vtkRenderWindowInteractor()
     render_window_interactor.SetRenderWindow(render_window)
-    
+
     # Couple the axes widget to the interactor
     widget.SetInteractor(render_window_interactor)
     widget.SetEnabled(1)
@@ -100,10 +102,10 @@ def visualize_mesh_from_db(hdf5_path: str, mesh_name: str, use_vtk: bool):
 
     mesh_group_path = f"meshes/{mesh_name}"
 
-    with h5py.File(db_file, 'r') as f:
+    with h5py.File(db_file, "r") as f:
         if mesh_group_path not in f:
             print(f"❌ Error: Mesh '{mesh_name}' not found in {hdf5_path}.")
-            available_meshes = list(f.get('meshes', {}).keys())
+            available_meshes = list(f.get("meshes", {}).keys())
             if available_meshes:
                 print("\nAvailable meshes are:")
                 for name in available_meshes:
@@ -111,10 +113,10 @@ def visualize_mesh_from_db(hdf5_path: str, mesh_name: str, use_vtk: bool):
             return
 
         print(f"📦 Loading mesh '{mesh_name}' from the database...")
-        stl_binary_content = f[mesh_group_path]['stl_content'][()]
+        stl_binary_content = f[mesh_group_path]["stl_content"][()]
 
     stl_file_in_memory = io.BytesIO(stl_binary_content)
-    mesh = trimesh.load_mesh(stl_file_in_memory, file_type='stl')
+    mesh = trimesh.load_mesh(stl_file_in_memory, file_type="stl")
 
     if use_vtk:
         show_with_vtk(mesh)
@@ -122,12 +124,12 @@ def visualize_mesh_from_db(hdf5_path: str, mesh_name: str, use_vtk: bool):
         show_with_trimesh(mesh)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize a mesh from the Fleetmaster HDF5 database.")
     parser.add_argument("mesh_name", help="The name of the mesh to visualize (e.g., 'barge_draft_1.0').")
     parser.add_argument("--file", default="results.hdf5", help="Path to the HDF5 database file.")
     parser.add_argument("--vtk", action="store_true", help="Use the VTK viewer instead of the default trimesh viewer.")
-    
+
     args = parser.parse_args()
 
     visualize_mesh_from_db(args.file, args.mesh_name, args.vtk)

@@ -1,14 +1,13 @@
 import hashlib
 import logging
-import os
 from pathlib import Path
 from unittest.mock import ANY, MagicMock, call, patch
-import trimesh
 
 import h5py
 import numpy as np
 import pandas as pd
 import pytest
+import trimesh
 import xarray as xr
 
 from fleetmaster.core.engine import (
@@ -131,7 +130,7 @@ def test_prepare_capytaine_body(mock_tempfile, mock_cpt, tmp_path: Path):
 
     mock_cpt.meshes.ReflectionSymmetricMesh = DummySymmetricMesh
     mock_cpt.ReflectionSymmetricMesh.return_value = DummySymmetricMesh()
-    
+
     # Act
     body, _ = _prepare_capytaine_body(
         source_mesh=mock_source_mesh, mesh_name="test_mesh", lid=True, grid_symmetry=True, add_center_of_mass=True
@@ -262,12 +261,10 @@ def test_run_simulation_batch_standard(mock_setup, mock_process, mock_settings):
 
     mock_setup.assert_called_once_with(mock_settings)
     assert mock_process.call_count == 2
-    mock_process.assert_has_calls(
-        [
-            call("file1.stl", mock_settings, output_file, mesh_name_override=None),
-            call("file2.stl", mock_settings, output_file, mesh_name_override=None),
-        ]
-    )
+    mock_process.assert_has_calls([
+        call("file1.stl", mock_settings, output_file, mesh_name_override=None),
+        call("file2.stl", mock_settings, output_file, mesh_name_override=None),
+    ])
 
 
 @patch("fleetmaster.core.engine._process_single_stl")
