@@ -124,7 +124,7 @@ def list_command(files: tuple[str, ...], option_files: tuple[str, ...], cases: b
     all_files = set(files) | set(option_files)
 
     # If no files are provided at all, use the default.
-    final_files = ["results.hdf5"] if not all_files else list(all_files)
+    final_files = list(all_files) if all_files else ["results.hdf5"]
 
     for hdf5_path in final_files:
         db_file = Path(hdf5_path)
