@@ -28,7 +28,7 @@ def show_with_trimesh(mesh: trimesh.Trimesh):
     mesh.show()
 
 
-def show_with_vtk(meshes: list[trimesh.Trimesh], mode: str):
+def show_with_vtk(meshes: list[trimesh.Trimesh]):
     """Visualizes the mesh using a VTK pipeline."""
     if not VTK_AVAILABLE:
         click.echo("❌ Error: The 'vtk' library is not installed. Please install it with 'pip install vtk'.")
@@ -63,8 +63,6 @@ def show_with_vtk(meshes: list[trimesh.Trimesh], mode: str):
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
         actor.GetProperty().SetColor(colors[i % len(colors)])
-        if mode == "wireframe":
-            actor.GetProperty().SetRepresentationToWireframe()
         renderer.AddActor(actor)
 
     # Add a global axes actor at the origin
@@ -98,7 +96,7 @@ def show_with_vtk(meshes: list[trimesh.Trimesh], mode: str):
     render_window_interactor.Start()
 
 
-def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str], use_vtk: bool, mode: str):
+def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str], use_vtk: bool):
     """Loads one or more meshes from HDF5 databases and visualizes them in a single scene."""
     loaded_meshes = []
 
@@ -145,8 +143,13 @@ def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str
         # For the default trimesh viewer, we can request wireframe mode before showing.
         # The user can still toggle it with the 'w' key.
         if mode == "wireframe":
-            logger.debug("Showing with wireframe mode. Toggle with w/s to go to solid")
-            scene.show(wireframe=True)
+            logger.debug("Showing with wireframe mode. Note: 'w' key might not toggle back to solid.")
+            # Replace solid meshes with their wireframe outlines for rendering
+            wireframe_geometries = [mesh.outline() for mesh in loaded_meshes]
+            scene.geometry.clear()
+            scene.add_geometry(trimesh.creation.axis(origin_size=0.05))
+            scene.add_geometry(wireframe_geometries)
+            scene.show()
         else:
             logger.debug("Showing with solid mode. Toggle with w/s to go to wireframe")
             scene.show()
@@ -201,4 +204,4 @@ def view(mesh_names: tuple[str, ...], hdf5_files: tuple[str, ...], vtk: bool, sh
         click.echo("Usage: fleetmaster view [MESH_NAME...] [--file <path>] or fleetmaster view --show-all", err=True)
         return
 
-    visualize_meshes_from_db(final_files_to_check, final_meshes_to_show, vtk, mode)
+    visualize_meshes_from_db(final_files_to_check, final_meshes_to_show, vtk)
