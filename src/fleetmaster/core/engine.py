@@ -171,6 +171,11 @@ def _prepare_capytaine_body(
     boat.add_all_rigid_body_dofs()
     boat.keep_immersed_part()
 
+    # If the mesh is symmetric, convert it back to a full mesh before extracting vertices/faces.
+    # This ensures the database stores the complete geometry.
+    if isinstance(boat.mesh, cpt.meshes.ReflectionSymmetricMesh):
+        boat.mesh = boat.mesh.to_mesh()
+
     # 5. Extract the final mesh that Capytaine will use for the database.
     final_mesh_trimesh = trimesh.Trimesh(vertices=boat.mesh.vertices, faces=boat.mesh.faces)
 
