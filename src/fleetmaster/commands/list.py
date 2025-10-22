@@ -3,6 +3,7 @@
 import io
 import logging
 from pathlib import Path
+from typing import Any
 
 import click
 import h5py
@@ -13,7 +14,7 @@ from trimesh import Trimesh
 logger = logging.getLogger(__name__)
 
 
-def _parse_stl_content(stl_content_dataset: h5py.Dataset) -> Trimesh:
+def _parse_stl_content(stl_content_dataset: Any) -> Trimesh:
     """
     Parses binary STL data from an HDF5 dataset into a trimesh object.
 
@@ -34,7 +35,7 @@ def _parse_stl_content(stl_content_dataset: h5py.Dataset) -> Trimesh:
     return mesh
 
 
-def _print_mesh_details(mesh_info_group: h5py.Group) -> None:
+def _print_mesh_details(mesh_info_group: Any) -> None:
     """Prints formatted geometric properties of a mesh from its HDF5 group."""
     attrs = mesh_info_group.attrs
     vol = attrs.get("volume", "N/A")
@@ -70,7 +71,7 @@ def _print_mesh_details(mesh_info_group: h5py.Group) -> None:
         click.echo(f"      BBox Max (x,y,z): ({bounds[1][0]:.3f}, {bounds[1][1]:.3f}, {bounds[1][2]:.3f})")
 
 
-def _list_cases(stream: h5py.File, hdf5_path: str) -> None:
+def _list_cases(stream: Any, hdf5_path: str) -> None:
     """Lists all simulation cases and their mesh properties in an HDF5 file."""
     click.echo(f"\nAvailable cases in '{hdf5_path}':")
     case_names = [name for name in stream if name != "meshes"]
@@ -93,7 +94,7 @@ def _list_cases(stream: h5py.File, hdf5_path: str) -> None:
             click.echo("      Mesh properties not found in database.")
 
 
-def _list_meshes(stream: h5py.File, hdf5_path: str) -> None:
+def _list_meshes(stream: Any, hdf5_path: str) -> None:
     """Lists all available meshes in an HDF5 file."""
     click.echo(f"\nAvailable meshes in '{hdf5_path}':")
     if not (meshes_group := stream.get("meshes")):
