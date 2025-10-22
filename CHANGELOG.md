@@ -2,7 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2025-10-23
+## [Unreleased]
+
+## [0.2.0] - 2025-10-23
 
 ### Added
 - `list` command can now show a detailed summary of simulation cases with the `--cases` flag, including mesh properties like volume, COG, and cell count.
