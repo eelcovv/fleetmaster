@@ -2,11 +2,14 @@
 
 import h5py
 import io
+import logging
 from pathlib import Path
 
 import click
 import numpy as np
 import trimesh
+
+logger = logging.getLogger(__name__)
 
 # Try to import vtk, but make it an optional dependency
 try:
@@ -136,15 +139,17 @@ def visualize_meshes_from_db(hdf5_paths: list[str], mesh_names_to_show: list[str
         scene = trimesh.Scene()
         scene.add_geometry(trimesh.creation.axis(origin_size=0.05))
 
-        if mode == "wireframe":
-            # For wireframe, set the visual properties of each mesh
-            for mesh in loaded_meshes:
-                mesh.visual = trimesh.visual.ColorVisuals(mesh, edge_colors=[0, 0, 0, 255])
-                scene.add_geometry(mesh)
-        else:
-            scene.add_geometry(loaded_meshes)
+        # Add all meshes to the scene
+        scene.add_geometry(loaded_meshes)
 
-        scene.show()
+        # For the default trimesh viewer, we can request wireframe mode before showing.
+        # The user can still toggle it with the 'w' key.
+        if mode == "wireframe":
+            logger.debug("Showing with wireframe mode. Toggle with w/s to go to solid")
+            scene.show(wireframe=True)
+        else:
+            logger.debug("Showing with solid mode. Toggle with w/s to go to wireframe")
+            scene.show()
 
 
 @click.command(name="view", help="Visualize one or more meshes from HDF5 database files.")
