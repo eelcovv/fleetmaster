@@ -3,12 +3,13 @@ import io
 from pathlib import Path
 
 import h5py
+import numpy as np
 import trimesh
 
 # Try to import vtk, but make it an optional dependency
 try:
     import vtk
-    from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
+    from vtk.util.numpy_support import numpy_to_vtk
 
     VTK_AVAILABLE = True
 except ImportError:

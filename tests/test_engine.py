@@ -123,13 +123,14 @@ def test_prepare_capytaine_body(mock_tempfile, mock_cpt, tmp_path: Path):
     mock_cpt.FloatingBody.return_value = mock_body
 
     # To make `isinstance(boat.mesh, cpt.meshes.ReflectionSymmetricMesh)` work,
-    # we define a dummy class and configure the mock to use it.
-    class DummySymmetricMesh:
+    # we define a dummy class and configure the mock to use it. This avoids
+    # `isinstance()` being called with a mock, which would raise a TypeError.
+    class _DummySymmetricMesh:
         def to_mesh(self):
             return MagicMock()
 
-    mock_cpt.meshes.ReflectionSymmetricMesh = DummySymmetricMesh
-    mock_cpt.ReflectionSymmetricMesh.return_value = DummySymmetricMesh()
+    mock_cpt.meshes.ReflectionSymmetricMesh = _DummySymmetricMesh
+    mock_cpt.ReflectionSymmetricMesh.return_value = _DummySymmetricMesh()
 
     # Act
     body, _ = _prepare_capytaine_body(
