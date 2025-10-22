@@ -34,8 +34,18 @@ def list_meshes_in_db(hdf5_paths: list[str]):
 
 
 @click.command(name="list", help="List all meshes available in one or more HDF5 database files.")
-@click.option("--file", "-f", "hdf5_files", multiple=True, default=["results.hdf5"],
+@click.argument("files", nargs=-1, type=click.Path())
+@click.option("--file", "-f", "option_files", multiple=True,
               help="Path to one or more HDF5 database files. Can be specified multiple times.")
-def list_command(hdf5_files: tuple[str, ...]):
+def list_command(files: tuple[str, ...], option_files: tuple[str, ...]):
     """CLI command to list meshes."""
-    list_meshes_in_db(list(hdf5_files))
+    # Combine positional arguments and optional --file arguments
+    all_files = set(files) | set(option_files)
+
+    # If no files are provided at all, use the default.
+    if not all_files:
+        final_files = ["results.hdf5"]
+    else:
+        final_files = list(all_files)
+
+    list_meshes_in_db(final_files)
