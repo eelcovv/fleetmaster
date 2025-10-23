@@ -10,6 +10,25 @@ from fleetmaster.core.exceptions import (
 MESH_GROUP_NAME = "meshes"
 
 
+class MeshConfig(BaseModel):
+    """Configuration for a single mesh, including its path and transformation."""
+
+    file: str
+    translation: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    rotation: list[float] = Field(
+        default_factory=lambda: [0.0, 0.0, 0.0], description="Rotation [roll, pitch, yaw] in degrees."
+    )
+    cog: list[float] | None = Field(
+        default=None, description="Center of Gravity [x,y,z] for this mesh, around which moments are calculated."
+    )
+    wave_periods: float | list[float] | None = Field(
+        default=None, description="Mesh-specific wave periods. Overrides global settings."
+    )
+    wave_directions: float | list[float] | None = Field(
+        default=None, description="Mesh-specific wave directions in degrees. Overrides global settings."
+    )
+
+
 class SimulationSettings(BaseModel):
     """Defines all possible settings for a simulation.
 
@@ -17,7 +36,14 @@ class SimulationSettings(BaseModel):
     automatically generate the help text for its corresponding command-line option.
     """
 
-    stl_files: list[str] = Field(description="Path to the STL mesh files.")
+    base_mesh: str | None = Field(
+        default=None, description="Path to the base STL mesh file for defining the origin of the coordinate system."
+    )
+    base_origin: list[float] | None = Field(
+        default=None,
+        description="A point [x, y, z] in the local coordinate system of the base_mesh that defines the world origin.",
+    )
+    stl_files: list[str | MeshConfig] = Field(description="A list of STL mesh files or mesh configurations.")
     output_directory: str | None = Field(default=None, description="Directory to save the output files.")
     output_hdf5_file: str = Field(default="results.hdf5", description="Path to the HDF5 output file.")
     wave_periods: float | list[float] = Field(default=[5.0, 10.0, 15.0, 20.0])

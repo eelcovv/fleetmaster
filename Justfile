@@ -17,6 +17,17 @@ install:
     @uv sync
     @uv run pre-commit install
 
+install-dev:
+    @echo "🚀 Creating virtual development environment using uv"
+    @uv sync --dev
+    @uv run pre-commit install
+
+install-pymeshup:
+    @echo "🚀 Creating virtual extended development environment using uv"
+    @uv sync --dev --group pymeshup
+    @uv run pre-commit install
+
+
 # ---------------------------------------
 # Quality
 # ---------------------------------------
@@ -39,11 +50,19 @@ check:
 # Test the code with pytest
 test:
     @echo "🚀 Testing code: Running pytest"
-    @uv run python -m pytest --cov --cov-config=pyproject.toml --cov-report=xml
+    @uv run python -m pytest
+
+# Test the code with pytest and generate a coverage report
+test-cov:
+    @echo "🚀 Testing code with coverage: Running pytest"
+    @uv run python -m pytest --cov --cov-config=pyproject.toml --cov-report=term-missing
 
 # ---------------------------------------
 # Build & Clean
 # ---------------------------------------
+
+# Clean build and examples
+clean: clean-build clean-examples
 
 # Build wheel file
 build: clean-build
@@ -87,6 +106,41 @@ docs-test:
 # Build and serve the documentation
 docs:
     @uv run mkdocs serve
+
+
+# ---------------------------------------
+# Examples
+# ---------------------------------------
+# Generate the example meshes. Requires pymeshup to be installed
+generate-all: install-pymeshup generate-box-mesh-full generate-box-mesh-half generate-ship-rotation
+
+generate-box-mesh-full:
+    @uv run python examples/defraction_box.py --output-dir examples --file-base defraction_box_full; exit 0
+generate-box-mesh-half:
+    @uv run python examples/defraction_box.py --output-dir examples --file-base defraction_box_half --grid-symmetry; exit 0
+generate-ship-rotation:
+    @uv run python examples/defraction_box.py --output-dir examples --file-base boxship --only-base; exit 0
+
+# Run fleetmaster examples
+fleetmaster-all: fleetmaster-full fleetmaster-half
+fleetmaster-full: generate-box-mesh-full
+    @fleetmaster -v run --settings-file examples/settings_full.yml --lid; exit 0
+fleetmaster-half: generate-box-mesh-half
+    @fleetmaster -v run --settings-file examples/settings_half.yml; exit 0
+fleetmaster-rotation: generate-ship-rotation
+    @fleetmaster -v run --settings-file examples/settings_rotations.yml; exit 0
+
+# clean examples directory
+clean-examples: clean-examples-stl clean-examples-hdf5
+# clean examples stl files
+clean-examples-stl:
+    @echo "🚀 Removing all stl example files"
+    @python -c "from pathlib import Path; [p.unlink() for p in Path('examples').glob('*.stl')]"
+# clean examples hdf5 files
+clean-examples-hdf5:
+    @echo "🚀 Removing all hdf5 example files"
+    @python -c "from pathlib import Path; [p.unlink() for p in Path('examples').glob('*.hdf5')]"
+
 
 # ---------------------------------------
 # Help / menu
