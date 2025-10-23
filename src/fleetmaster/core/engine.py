@@ -425,6 +425,14 @@ def _process_and_save_single_case(
             logger.info(f"Case '{group_name}' exists, but update_cases is True. Overwriting.")
             del f[group_name]
 
+    # Calculate the transformation matrix for this specific case relative to the global origin
+    transformation_matrix = None
+    if origin_translation is not None:
+        # The transformation is the translation from the global origin to the mesh's COG for this case.
+        # Note: boat.center_of_mass is the COG used for calculation, not necessarily the geometric center.
+        translation_vector = boat.center_of_mass - origin_translation
+        transformation_matrix = trimesh.transformations.translation_matrix(translation_vector)
+
     logger.info(
         f"Starting BEM calculations for water_level={case_params['water_level']}, "
         f"water_depth={case_params['water_depth']}, forward_speed={case_params['forward_speed']}"
@@ -446,8 +454,10 @@ def _process_and_save_single_case(
             if group_name in f:
                 case_group = f[group_name]
                 case_group.attrs["stl_mesh_name"] = mesh_name
-                if origin_translation is not None:
-                    case_group.attrs["origin_translation"] = origin_translation
+                if transformation_matrix is not None:
+                    case_group.attrs["transformation_matrix"] = transformation_matrix
+                if boat.center_of_mass is not None:
+                    case_group.attrs["cog_for_calculation"] = boat.center_of_mass
 
     logger.debug(f"Successfully wrote data for case to group {group_name}.")
     return database
