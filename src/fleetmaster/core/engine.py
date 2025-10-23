@@ -13,6 +13,7 @@ import trimesh
 import xarray as xr
 
 from .exceptions import LidAndSymmetryEnabledError
+from .io import load_meshes_from_hdf5
 from .settings import MESH_GROUP_NAME, MeshConfig, SimulationSettings
 
 logger = logging.getLogger(__name__)
@@ -272,6 +273,57 @@ def _process_single_stl(
     origin_translation: npt.NDArray[np.float64] | None = None,
 ) -> None:
     """
+    Checks if a mesh exists in the database. If so, uses it.
+    If not, generates it, saves it, and then uses it for the simulation pipeline.
+    """
+    mesh_name = mesh_name_override or Path(mesh_config.file).stem
+    final_mesh_to_process: trimesh.Trimesh | None = None
+
+    # 1. Check if the mesh already exists in the database.
+    try:
+        existing_meshes = load_meshes_from_hdf5(output_file, [mesh_name])
+        if existing_meshes:
+            final_mesh_to_process = existing_meshes[0]
+            logger.info(f"Found existing mesh '{mesh_name}' in the database. Using it directly.")
+            # If we use an existing mesh, we assume it's already translated.
+            # We ignore the translation from the settings for this mesh.
+            mesh_config.translation = [0.0, 0.0, 0.0]
+    except FileNotFoundError:
+        # The HDF5 file doesn't exist yet, so no meshes can exist.
+        pass
+
+    # 2. If the mesh does not exist, generate it.
+    if final_mesh_to_process is None:
+        logger.info(f"Mesh '{mesh_name}' not found in database. Generating from '{mesh_config.file}' with translation.")
+
+        # Load the base STL and apply the specified translation.
+        translated_mesh = _prepare_trimesh_geometry(
+            stl_file=mesh_config.file,
+            translation_x=mesh_config.translation[0],
+            translation_y=mesh_config.translation[1],
+            translation_z=mesh_config.translation[2],
+        )
+
+        # Save the newly generated, translated mesh to a separate STL file for inspection.
+        output_stl_path = output_file.with_name(f"{mesh_name}.stl")
+        logger.info(f"Saving newly generated translated mesh to: {output_stl_path}")
+        translated_mesh.export(output_stl_path)
+
+        final_mesh_to_process = translated_mesh
+
+    # 3. Run the complete processing pipeline with the determined mesh.
+    _run_pipeline_for_mesh(final_mesh_to_process, mesh_config, settings, output_file, mesh_name, origin_translation)
+
+
+def _run_pipeline_for_mesh(
+    source_mesh: trimesh.Trimesh,
+    mesh_config: MeshConfig,
+    settings: SimulationSettings,
+    output_file: Path,
+    mesh_name: str,
+    origin_translation: npt.NDArray[np.float64] | None,
+) -> None:
+    """
     Run the complete processing pipeline for a single STL file.
     """
     logger.info(f"Processing STL file: {mesh_config.file}")
@@ -313,7 +365,7 @@ def _process_single_stl(
     logger.info(fmt_str % ("Forward speed(s) [m/s]", forwards_speeds))
 
     process_all_cases_for_one_stl(
-        mesh_config=mesh_config,
+        source_mesh=source_mesh,
         wave_frequencies=wave_frequencies,
         wave_directions=wave_directions,
         water_depths=water_depths,
@@ -325,13 +377,13 @@ def _process_single_stl(
         output_file=output_file,
         update_cases=settings.update_cases,
         combine_cases=settings.combine_cases,
-        mesh_name_override=mesh_name_override,
+        mesh_name=mesh_name,
         origin_translation=origin_translation,
     )
 
 
 def process_all_cases_for_one_stl(
-    mesh_config: MeshConfig,
+    source_mesh: trimesh.Trimesh,
     wave_frequencies: list | npt.NDArray[np.float64],
     wave_directions: list | npt.NDArray[np.float64],
     water_depths: list | npt.NDArray[np.float64],
@@ -343,20 +395,13 @@ def process_all_cases_for_one_stl(
     output_file: Path,
     update_cases: bool = False,
     combine_cases: bool = False,
-    mesh_name_override: str | None = None,
+    mesh_name: str,
     origin_translation: npt.NDArray[np.float64] | None = None,
 ) -> None:
-    # The mesh name should be based on the file, not including any specific transformations.
-    # Overrides are used for special cases like drafts.
-    mesh_name = mesh_name_override or Path(mesh_config.file).stem
+    # 1. Use the prepared (and possibly translated) geometry to create the Capytaine body
+    boat, final_mesh = _prepare_capytaine_body(source_mesh=source_mesh, mesh_name=mesh_name, lid=lid, grid_symmetry=grid_symmetry, add_center_of_mass=add_center_of_mass)
 
-    # 1. Load the pure, untransformed geometry first to store in the database.
-    pure_trimesh_geometry = _prepare_trimesh_geometry(stl_file=mesh_config.file)
-
-    # 2. Use the prepared geometry to create the Capytaine body
-    boat, final_mesh = _prepare_capytaine_body(source_mesh=pure_trimesh_geometry, mesh_name=mesh_name, lid=lid, grid_symmetry=grid_symmetry, add_center_of_mass=add_center_of_mass)
-
-    # Add the final, immersed mesh geometry to the database. This version is untransformed.
+    # 2. Add the final, immersed mesh geometry to the database. This version is now the translated one.
     add_mesh_to_database(output_file, final_mesh, mesh_name, overwrite=update_cases)
 
     all_datasets = []
@@ -374,21 +419,13 @@ def process_all_cases_for_one_stl(
                         logger.info(f"Case '{group_name}' exists, but update_cases is True. Overwriting.")
                         del f[group_name]
 
-                logger.info(
-                    f"Applying translation {mesh_config.translation} for this case."
-                )
-                # Apply the case-specific translation to the Capytaine body
-                boat.translate(mesh_config.translation)
-
                 # Calculate the transformation matrix for this specific case
                 transformation_matrix = None
                 if origin_translation is not None:
                     translation_vector = boat.center_of_mass - origin_translation
                     transformation_matrix = trimesh.transformations.translation_matrix(translation_vector)
 
-                logger.info(
-                    f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={forward_speed}"
-                )
+                logger.info(f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={forward_speed}")
                 database = make_database(
                     body=boat,
                     omegas=wave_frequencies,
@@ -410,9 +447,7 @@ def process_all_cases_for_one_stl(
                             if transformation_matrix is not None:
                                 case_group.attrs["transformation_matrix"] = transformation_matrix
 
-                # Revert translation for the next iteration
-                boat.translate(-np.array(mesh_config.translation))
-                    logger.debug(f"Successfully wrote data for case to group {group_name}.")
+                logger.debug(f"Successfully wrote data for case to group {group_name}.")
 
     if combine_cases and all_datasets:
         logger.info("Combining all calculated cases into a single multi-dimensional dataset.")
@@ -427,7 +462,7 @@ def process_all_cases_for_one_stl(
         with h5py.File(output_file, "a") as f:
             f[combined_group_name].attrs["stl_mesh_name"] = mesh_name
 
-    logger.debug(f"Successfully wrote all data for {mesh_config.file} to HDF5.")
+    logger.debug(f"Successfully wrote all data for mesh '{mesh_name}' to HDF5.")
 
 
 def run_simulation_batch(settings: SimulationSettings) -> None:
