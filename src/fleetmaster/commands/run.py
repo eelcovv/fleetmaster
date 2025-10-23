@@ -176,6 +176,13 @@ def _load_config(settings_file: str | None, cli_args: dict[str, Any]) -> dict[st
         with open(settings_file) as f:
             config = yaml.safe_load(f) or {}
 
+        # Parse range strings from YAML for specific fields
+        for key in ["wave_periods", "wave_directions", "drafts"]:
+            if key in config and isinstance(config[key], str):
+                parsed_range = _parse_range_string(config[key])
+                if parsed_range is not None:
+                    config[key] = parsed_range
+
         # Resolve paths relative to the settings file
         settings_dir = Path(settings_file).parent
         if "base_mesh" in config and config["base_mesh"] and not Path(config["base_mesh"]).is_absolute():

@@ -313,11 +313,20 @@ def _process_single_stl(
         else:
             # 3. If neither DB entry nor STL file exists, generate the mesh.
             logger.info(
-                f"Mesh '{mesh_name}' not found in DB or as STL. Generating from source with translation."
+                f"Mesh '{mesh_name}' not found in DB or as STL file. Attempting to generate it."
             )
+            # Use the global base_mesh as the source for generation.
+            source_file_path = settings.base_mesh
+            if not source_file_path or not Path(source_file_path).exists():
+                err_msg = (
+                    f"Cannot generate mesh '{mesh_name}'. The source file '{target_stl_path}' does not exist, "
+                    f"and no valid 'base_mesh' ('{source_file_path}') is configured to generate it from."
+                )
+                raise FileNotFoundError(err_msg)
+
             # Load the base STL and apply the specified translation.
             translated_mesh = _prepare_trimesh_geometry(
-                stl_file=str(target_stl_path),  # The source file is the same as the target in this case
+                stl_file=str(source_file_path),
                 translation_x=mesh_config.translation[0],
                 translation_y=mesh_config.translation[1],
                 translation_z=mesh_config.translation[2],
