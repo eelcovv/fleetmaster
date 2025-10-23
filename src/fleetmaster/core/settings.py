@@ -15,8 +15,8 @@ class MeshConfig(BaseModel):
 
     file: str
     translation: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
-    local_origin: list[float] | None = Field(
-        default=None, description="Local origin [x,y,z] for this mesh, around which moments are calculated."
+    cog: list[float] | None = Field(
+        default=None, description="Center of Gravity [x,y,z] for this mesh, around which moments are calculated."
     )
     wave_periods: float | list[float] | None = Field(
         default=None, description="Mesh-specific wave periods. Overrides global settings."

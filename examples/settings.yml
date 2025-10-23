@@ -18,11 +18,12 @@ base_origin: [1.5, 0.0, 1.5]
 
 stl_files:
   - file: "defraction_box_1m.stl"
-    translation: [0.0, 0.0, -1.0]
+    translation: [-1.5, 0.0, -1.0]
+    cog: [0.0, 0.0, 0.0]
     # This mesh will use the global wave_periods and wave_directions.
 
   - file: "defraction_box_2m.stl"
-    translation: [0.0, 0.0, -2.0]
+    translation: [-1.5, 0.0, -2.0]
     # This mesh overrides the global wave_directions with its own specific values.
     wave_directions: [0, 90, 180]
 

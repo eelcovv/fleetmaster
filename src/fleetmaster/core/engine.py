@@ -140,16 +140,16 @@ def _prepare_capytaine_body(
 ) -> tuple[Any, trimesh.Trimesh]:
     """
     Configures a Capytaine FloatingBody from a pre-prepared trimesh object.
-
-    The `center_of_mass` for Capytaine is determined by `mesh_config.local_origin`,
+ 
+    The `center_of_mass` for Capytaine is determined by `mesh_config.cog`,
     falling back to the mesh's geometric center of mass. The `add_center_of_mass`
     flag can be used to disable this fallback and default to (0,0,0) if no
-    `local_origin` is specified.
+    `cog` is specified.
     """
     cog = None
-    if mesh_config.local_origin:
-        cog = np.array(mesh_config.local_origin)
-        logger.debug(f"Using specified local_origin {cog} as the center of mass for Capytaine.")
+    if mesh_config.cog:
+        cog = np.array(mesh_config.cog)
+        logger.debug(f"Using specified COG {cog} as the center of mass for Capytaine.")
     else:
         # If no local_origin is specified, use the center of mass of the (already translated) source_mesh.
         cog = source_mesh.center_mass

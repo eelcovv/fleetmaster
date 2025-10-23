@@ -21,7 +21,7 @@ from fleetmaster.core.engine import (
     run_simulation_batch,
 )
 from fleetmaster.core.exceptions import LidAndSymmetryEnabledError
-from fleetmaster.core.settings import SimulationSettings
+from fleetmaster.core.settings import MeshConfig, SimulationSettings
 
 
 @pytest.fixture
@@ -122,6 +122,10 @@ def test_prepare_capytaine_body(mock_tempfile, mock_cpt, tmp_path: Path):
     mock_body = MagicMock()
     mock_cpt.FloatingBody.return_value = mock_body
 
+    mock_mesh_config = MagicMock(spec=MeshConfig)
+    mock_mesh_config.cog = None
+    mock_mesh_config.local_origin = None  # For older versions if needed
+
     # To make `isinstance(boat.mesh, cpt.meshes.ReflectionSymmetricMesh)` work,
     # we define a dummy class and configure the mock to use it. This avoids
     # `isinstance()` being called with a mock, which would raise a TypeError.
@@ -134,7 +138,12 @@ def test_prepare_capytaine_body(mock_tempfile, mock_cpt, tmp_path: Path):
 
     # Act
     body, _ = _prepare_capytaine_body(
-        source_mesh=mock_source_mesh, mesh_name="test_mesh", lid=True, grid_symmetry=True, add_center_of_mass=True
+        source_mesh=mock_source_mesh,
+        mesh_name="test_mesh",
+        mesh_config=mock_mesh_config,
+        lid=True,
+        grid_symmetry=True,
+        add_center_of_mass=True,
     )
 
     # Assert
@@ -165,14 +174,19 @@ def test_prepare_capytaine_body_with_symmetry(mock_tempfile, mock_cpt, tmp_path:
     mock_symmetric_mesh = MagicMock()
     mock_cpt.ReflectionSymmetricMesh.return_value = mock_symmetric_mesh
 
+    mock_mesh_config = MagicMock(spec=MeshConfig)
+    mock_mesh_config.cog = None
+
     # Act
-    _prepare_capytaine_body(source_mesh=mock_source_mesh, mesh_name="test_mesh", lid=False, grid_symmetry=True)
+    _prepare_capytaine_body(
+        source_mesh=mock_source_mesh, mesh_name="test_mesh", mesh_config=mock_mesh_config, lid=False, grid_symmetry=True
+    )
 
     # Assert
     # Check that ReflectionSymmetricMesh was called with the base mesh
     mock_cpt.ReflectionSymmetricMesh.assert_called_once_with(mock_base_hull_mesh, plane=mock_cpt.xOz_Plane)
     # Check that the FloatingBody was created with the *symmetric* mesh
-    mock_cpt.FloatingBody.assert_called_once_with(mesh=mock_symmetric_mesh, lid_mesh=None, center_of_mass=None)
+    mock_cpt.FloatingBody.assert_called_once_with(mesh=mock_symmetric_mesh, lid_mesh=None, center_of_mass=ANY)
 
 
 def test_add_mesh_to_database_new(tmp_path):
