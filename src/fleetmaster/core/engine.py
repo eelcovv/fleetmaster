@@ -421,16 +421,19 @@ def _process_and_save_single_case(
             logger.info(f"Case '{group_name}' exists, but update_cases is True. Overwriting.")
             del f[group_name]
 
-    # Calculate the transformation matrix for this specific case
-    if origin_translation is not None:
-        translation_vector = boat.center_of_mass - origin_translation
-        transformation_matrix = trimesh.transformations.translation_matrix(translation_vector)
-
     logger.info(
         f"Starting BEM calculations for water_level={case_params['water_level']}, "
         f"water_depth={case_params['water_depth']}, forward_speed={case_params['forward_speed']}"
     )
-    database = make_database(body=boat, **case_params)
+    # Select only the parameters that make_database expects.
+    db_params = {
+        "omegas": case_params["omegas"],
+        "wave_directions": case_params["wave_directions"],
+        "water_depth": case_params["water_depth"],
+        "water_level": case_params["water_level"],
+        "forward_speed": case_params["forward_speed"],
+    }
+    database = make_database(body=boat, **db_params)
 
     if not case_params["combine_cases"]:
         logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
@@ -439,8 +442,8 @@ def _process_and_save_single_case(
             if group_name in f:
                 case_group = f[group_name]
                 case_group.attrs["stl_mesh_name"] = mesh_name
-                if transformation_matrix is not None:
-                    case_group.attrs["transformation_matrix"] = transformation_matrix
+                if origin_translation is not None:
+                    case_group.attrs["origin_translation"] = origin_translation
 
     logger.debug(f"Successfully wrote data for case to group {group_name}.")
     return database
