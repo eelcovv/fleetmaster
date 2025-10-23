@@ -94,7 +94,9 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
         msg = "No STL files provided to process."
         raise ValueError(msg)
 
-    output_dir = Path(settings.output_directory) if settings.output_directory else Path(settings.stl_files[0]).parent
+    first_stl_entry = settings.stl_files[0]
+    first_stl_path = first_stl_entry if isinstance(first_stl_entry, str) else first_stl_entry.file
+    output_dir = Path(settings.output_directory) if settings.output_directory else Path(first_stl_path).parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_dir / settings.output_hdf5_file
@@ -381,7 +383,7 @@ def _run_pipeline_for_mesh(
 
 
 def _process_and_save_single_case(
-    boat: cpt.FloatingBody,
+    boat: Any,  # cpt.FloatingBody is not fully typed, use Any to satisfy mypy
     mesh_name: str,
     case_params: dict[str, Any],
     output_file: Path,
@@ -442,6 +444,11 @@ def process_all_cases_for_one_stl(
     mesh_name: str | None = None,
     origin_translation: npt.NDArray[np.float64] | None = None,
 ) -> None:
+    if mesh_name is None:
+        # This should ideally not happen if called correctly, but it satisfies mypy.
+        logger.error("process_all_cases_for_one_stl called without a mesh_name.")
+        return
+
     # 1. Use the prepared (and possibly translated) geometry to create the Capytaine body
     boat, final_mesh = _prepare_capytaine_body(
         source_mesh=source_mesh,
