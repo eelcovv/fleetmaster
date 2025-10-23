@@ -1,0 +1,23 @@
+# Example configuration file for Fleetmaster
+#
+# This file defines a "scene" with multiple meshes.
+# - `base_mesh` is used to define the origin of the database (the center of mass of this mesh).
+# - `stl_files` is a list of meshes that should actually be simulated.
+#
+# In this example:
+# 1. `defraction_box.stl` defines the origin but is not simulated itself because it's not in the `stl_files` list.
+# 2. `defraction_box_1m.stl` and `defraction_box_2m.stl` are simulated.
+#    The `translation` vector for these files is [0, 0, 0] because the geometry in the STL files themselves
+#    already has the correct position. The engine will calculate and store the final transformation
+#    relative to the `base_mesh` origin.
+
+base_mesh: "defraction_box.stl"
+
+stl_files:
+  - file: "defraction_box_1m.stl"
+    translation: [0.0, 0.0, 0.0]
+  - file: "defraction_box_2m.stl"
+    translation: [0.0, 0.0, 0.0]
+
+wave_periods: [8.0, 10.0, 12.0]
+wave_directions: [0, 90, 180]
