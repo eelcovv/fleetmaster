@@ -181,17 +181,13 @@ def _prepare_capytaine_body(
 def add_mesh_to_database(
     output_file: Path,
     mesh_to_add: trimesh.Trimesh,
-    mesh_name: str,
-    overwrite: bool = False,
-    base_mesh_name: str | None = None,
-    transformation_matrix: npt.NDArray[np.float64] | None = None,
+    mesh_name: str, overwrite: bool = False
 ) -> None:
     """
     Adds a mesh and its geometric properties to the HDF5 database under the MESH_GROUP_NAME.
 
     Checks if the mesh already exists by comparing SHA256 hashes.
     If the data is different, it will either raise a warning or overwrite if `overwrite` is True.
-    Also stores the transformation matrix relative to the base mesh.
 
     Args:
         mesh_to_add: The trimesh object of the mesh to be added.
@@ -240,11 +236,6 @@ def add_mesh_to_database(
 
         # Add hash and original file name as attributes
         group.attrs["sha256"] = new_hash
-        if base_mesh_name:
-            group.attrs["base_mesh"] = base_mesh_name
-        if transformation_matrix is not None:
-            group.create_dataset("transformation_matrix", data=transformation_matrix)
-            logger.debug("  - Wrote dataset: transformation_matrix")
 
         group.create_dataset("inertia_tensor", data=mesh_to_add.moment_inertia)
         logger.debug("  - Wrote dataset: inertia_tensor")
@@ -355,38 +346,18 @@ def process_all_cases_for_one_stl(
     mesh_name_override: str | None = None,
     origin_translation: npt.NDArray[np.float64] | None = None,
 ) -> None:
+    # The mesh name should be based on the file, not including any specific transformations.
+    # Overrides are used for special cases like drafts.
     mesh_name = mesh_name_override or Path(mesh_config.file).stem
 
-    # 1. Prepare the base geometry with all transformations
-    trimesh_geometry = _prepare_trimesh_geometry(
-        stl_file=mesh_config.file,
-        translation_x=mesh_config.translation[0],
-        translation_y=mesh_config.translation[1],
-        translation_z=mesh_config.translation[2],
-    )
+    # 1. Load the pure, untransformed geometry first to store in the database.
+    pure_trimesh_geometry = _prepare_trimesh_geometry(stl_file=mesh_config.file)
 
     # 2. Use the prepared geometry to create the Capytaine body
-    boat, final_mesh = _prepare_capytaine_body(
-        source_mesh=trimesh_geometry,
-        mesh_name=mesh_name,
-        lid=lid,
-        grid_symmetry=grid_symmetry,
-        add_center_of_mass=add_center_of_mass,
-    )
+    boat, final_mesh = _prepare_capytaine_body(source_mesh=pure_trimesh_geometry, mesh_name=mesh_name, lid=lid, grid_symmetry=grid_symmetry, add_center_of_mass=add_center_of_mass)
 
-    # 3. Calculate transformation relative to the origin (defined by base mesh)
-    transformation_matrix = None
-    base_mesh_name = None
-    if origin_translation is not None:
-        # The transformation is the translation from the origin to the mesh's center of mass.
-        translation_vector = trimesh_geometry.center_mass - origin_translation
-        transformation_matrix = trimesh.transformations.translation_matrix(translation_vector)
-        base_mesh_name = Path(settings.base_mesh).stem if settings.base_mesh else None
-
-    # Add the final, transformed, and immersed mesh to the database.
-    add_mesh_to_database(
-        output_file, final_mesh, mesh_name, overwrite=update_cases, base_mesh_name=base_mesh_name, transformation_matrix=transformation_matrix
-    )
+    # Add the final, immersed mesh geometry to the database. This version is untransformed.
+    add_mesh_to_database(output_file, final_mesh, mesh_name, overwrite=update_cases)
 
     all_datasets = []
 
@@ -402,6 +373,18 @@ def process_all_cases_for_one_stl(
                             continue
                         logger.info(f"Case '{group_name}' exists, but update_cases is True. Overwriting.")
                         del f[group_name]
+
+                logger.info(
+                    f"Applying translation {mesh_config.translation} for this case."
+                )
+                # Apply the case-specific translation to the Capytaine body
+                boat.translate(mesh_config.translation)
+
+                # Calculate the transformation matrix for this specific case
+                transformation_matrix = None
+                if origin_translation is not None:
+                    translation_vector = boat.center_of_mass - origin_translation
+                    transformation_matrix = trimesh.transformations.translation_matrix(translation_vector)
 
                 logger.info(
                     f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={forward_speed}"
@@ -422,7 +405,13 @@ def process_all_cases_for_one_stl(
                     database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
                     with h5py.File(output_file, "a") as f:
                         if group_name in f:
-                            f[group_name].attrs["stl_mesh_name"] = mesh_name
+                            case_group = f[group_name]
+                            case_group.attrs["stl_mesh_name"] = mesh_name
+                            if transformation_matrix is not None:
+                                case_group.attrs["transformation_matrix"] = transformation_matrix
+
+                # Revert translation for the next iteration
+                boat.translate(-np.array(mesh_config.translation))
                     logger.debug(f"Successfully wrote data for case to group {group_name}.")
 
     if combine_cases and all_datasets:
@@ -468,10 +457,25 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
         base_mesh_path = all_files[0]
 
     if base_mesh_path:
-        logger.info(f"Using '{base_mesh_path}' as the base mesh to define the coordinate origin.")
-        base_mesh_for_origin = _prepare_trimesh_geometry(base_mesh_path)
-        origin_translation = base_mesh_for_origin.center_mass
-        logger.info(f"Database origin (center of mass of base mesh) set to: {origin_translation}")
+        if settings.base_origin:
+            # If base_origin is specified, it's a point in the local coordinates of the base_mesh.
+            # This point becomes the origin of our world coordinate system.
+            origin_translation = np.array(settings.base_origin)
+            logger.info(f"Using local point {origin_translation} from '{base_mesh_path}' as the world origin.")
+        else:
+            # Fallback to using the center of mass if base_origin is not provided.
+            logger.info(f"Using center of mass of '{base_mesh_path}' to define the coordinate origin.")
+            base_mesh_for_origin = _prepare_trimesh_geometry(base_mesh_path)
+            origin_translation = base_mesh_for_origin.center_mass
+            logger.info(f"Database origin (center of mass of base mesh) set to: {origin_translation}")
+
+        # Store the base reference information in the root of the HDF5 file
+        with h5py.File(output_file, "a") as f:
+            f.attrs["base_mesh"] = Path(base_mesh_path).name
+            if settings.base_origin:
+                f.attrs["base_origin"] = settings.base_origin
+            else:
+                f.attrs["base_origin"] = origin_translation # Store the calculated CoM as origin
 
     if settings.drafts and base_mesh_path:
         if len(all_files) != 1:
