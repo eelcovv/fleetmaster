@@ -133,16 +133,23 @@ def _prepare_trimesh_geometry(
 def _prepare_capytaine_body(
     source_mesh: trimesh.Trimesh,
     mesh_name: str,
+    mesh_config: MeshConfig,
     lid: bool,
     grid_symmetry: bool,
     add_center_of_mass: bool = False,
 ) -> tuple[Any, trimesh.Trimesh]:
     """
     Configures a Capytaine FloatingBody from a pre-prepared trimesh object.
+    The `center_of_mass` for Capytaine is determined by `mesh_config.local_origin`,
+    falling back to the mesh's geometric center of mass if `add_center_of_mass` is true.
     """
-    cog = source_mesh.center_mass if add_center_of_mass else None
-    if cog is not None:
-        logger.debug(f"Adding COG {cog}")
+    cog = None
+    if mesh_config.local_origin:
+        cog = np.array(mesh_config.local_origin)
+        logger.debug(f"Using specified local_origin {cog} as the center of mass for Capytaine.")
+    elif add_center_of_mass:
+        cog = source_mesh.center_mass
+        logger.debug(f"Using geometric center of mass {cog} for Capytaine.")
 
     # 1. Save the transformed mesh to a temporary file and load it with Capytaine.
     # This is more robust than creating a cpt.Mesh from vertices/faces directly.
@@ -339,14 +346,18 @@ def _run_pipeline_for_mesh(
     if settings.lid and settings.grid_symmetry:
         raise LidAndSymmetryEnabledError()
 
-    wave_periods = settings.wave_periods if isinstance(settings.wave_periods, list) else [settings.wave_periods]
+    # Use mesh-specific wave periods and directions if provided, otherwise fall back to global settings.
+    periods_to_use = mesh_config.wave_periods or settings.wave_periods
+    wave_periods = periods_to_use if isinstance(periods_to_use, list) else [periods_to_use]
     wave_frequencies = (2 * np.pi / np.array(wave_periods)).tolist()
-    wave_directions = (
-        settings.wave_directions if isinstance(settings.wave_directions, list) else [settings.wave_directions]
-    )
-    wave_directions = np.deg2rad(wave_directions).tolist()
+
+    directions_to_use = mesh_config.wave_directions or settings.wave_directions
+    wave_directions_deg = directions_to_use if isinstance(directions_to_use, list) else [directions_to_use]
+    wave_directions_rad = np.deg2rad(wave_directions_deg).tolist()
+
     water_depths = settings.water_depth if isinstance(settings.water_depth, list) else [settings.water_depth]
     water_levels = settings.water_level if isinstance(settings.water_level, list) else [settings.water_level]
+    forwards_speeds = settings.forward_speed if isinstance(settings.forward_speed, list) else [settings.forward_speed]
 
     forwards_speeds = settings.forward_speed if isinstance(settings.forward_speed, list) else [settings.forward_speed]
 
@@ -362,7 +373,7 @@ def _run_pipeline_for_mesh(
     logger.info(fmt_str % ("Grid symmetry", grid_symmetry))
     logger.info(fmt_str % ("Use lid", lid))
     logger.info(fmt_str % ("Add COG ", add_center_of_mass))
-    logger.info(fmt_str % ("Direction(s) [rad]", wave_directions))
+    logger.info(fmt_str % ("Direction(s) [rad]", wave_directions_rad))
     logger.info(fmt_str % ("Wave period(s) [s]", wave_periods))
     logger.info(fmt_str % ("Water depth(s) [m]", water_depths))
     logger.info(fmt_str % ("Water level(s) [m]", water_levels))
@@ -374,7 +385,7 @@ def _run_pipeline_for_mesh(
     process_all_cases_for_one_stl(
         source_mesh=source_mesh,
         wave_frequencies=wave_frequencies,
-        wave_directions=wave_directions,
+        wave_directions=wave_directions_rad,
         water_depths=water_depths,
         water_levels=water_levels,
         forwards_speeds=forwards_speeds,
@@ -385,6 +396,7 @@ def _run_pipeline_for_mesh(
         update_cases=settings.update_cases,
         combine_cases=settings.combine_cases,
         mesh_name=mesh_name,
+        mesh_config=mesh_config,
         origin_translation=origin_translation,
     )
 
@@ -410,7 +422,6 @@ def _process_and_save_single_case(
             del f[group_name]
 
     # Calculate the transformation matrix for this specific case
-    transformation_matrix = None
     if origin_translation is not None:
         translation_vector = boat.center_of_mass - origin_translation
         transformation_matrix = trimesh.transformations.translation_matrix(translation_vector)
@@ -449,6 +460,7 @@ def process_all_cases_for_one_stl(
     update_cases: bool = False,
     combine_cases: bool = False,
     mesh_name: str | None = None,
+    mesh_config: MeshConfig | None = None,
     origin_translation: npt.NDArray[np.float64] | None = None,
 ) -> None:
     if mesh_name is None:
@@ -456,10 +468,16 @@ def process_all_cases_for_one_stl(
         logger.error("process_all_cases_for_one_stl called without a mesh_name.")
         return
 
+    if mesh_config is None:
+        # This should ideally not happen if called correctly, but it satisfies mypy.
+        logger.error("process_all_cases_for_one_stl called without a mesh_config.")
+        return
+
     # 1. Use the prepared (and possibly translated) geometry to create the Capytaine body
     boat, final_mesh = _prepare_capytaine_body(
         source_mesh=source_mesh,
         mesh_name=mesh_name,
+        mesh_config=mesh_config,
         lid=lid,
         grid_symmetry=grid_symmetry,
         add_center_of_mass=add_center_of_mass,
