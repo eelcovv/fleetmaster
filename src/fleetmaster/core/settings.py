@@ -28,7 +28,8 @@ class SimulationSettings(BaseModel):
         default=None, description="Path to the base STL mesh file for defining the origin of the coordinate system."
     )
     base_origin: list[float] | None = Field(
-        default=None, description="A point [x, y, z] in the local coordinate system of the base_mesh that defines the world origin."
+        default=None,
+        description="A point [x, y, z] in the local coordinate system of the base_mesh that defines the world origin.",
     )
     stl_files: list[str | MeshConfig] = Field(description="A list of STL mesh files or mesh configurations.")
     output_directory: str | None = Field(default=None, description="Directory to save the output files.")

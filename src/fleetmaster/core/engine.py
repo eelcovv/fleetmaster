@@ -180,9 +180,7 @@ def _prepare_capytaine_body(
 
 
 def add_mesh_to_database(
-    output_file: Path,
-    mesh_to_add: trimesh.Trimesh,
-    mesh_name: str, overwrite: bool = False
+    output_file: Path, mesh_to_add: trimesh.Trimesh, mesh_name: str, overwrite: bool = False
 ) -> None:
     """
     Adds a mesh and its geometric properties to the HDF5 database under the MESH_GROUP_NAME.
@@ -382,6 +380,52 @@ def _run_pipeline_for_mesh(
     )
 
 
+def _process_and_save_single_case(
+    boat: cpt.FloatingBody,
+    mesh_name: str,
+    case_params: dict[str, Any],
+    output_file: Path,
+    origin_translation: npt.NDArray[np.float64] | None,
+) -> Any:
+    """Process a single simulation case and save its results to the HDF5 file."""
+    group_name = _generate_case_group_name(
+        mesh_name, case_params["water_depth"], case_params["water_level"], case_params["forward_speed"]
+    )
+
+    with h5py.File(output_file, "a") as f:
+        if group_name in f:
+            if not case_params["update_cases"]:
+                logger.info(f"Case '{group_name}' already exists in the database. Skipping.")
+                return None
+            logger.info(f"Case '{group_name}' exists, but update_cases is True. Overwriting.")
+            del f[group_name]
+
+    # Calculate the transformation matrix for this specific case
+    transformation_matrix = None
+    if origin_translation is not None:
+        translation_vector = boat.center_of_mass - origin_translation
+        transformation_matrix = trimesh.transformations.translation_matrix(translation_vector)
+
+    logger.info(
+        f"Starting BEM calculations for water_level={case_params['water_level']}, "
+        f"water_depth={case_params['water_depth']}, forward_speed={case_params['forward_speed']}"
+    )
+    database = make_database(body=boat, **case_params)
+
+    if not case_params["combine_cases"]:
+        logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
+        database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
+        with h5py.File(output_file, "a") as f:
+            if group_name in f:
+                case_group = f[group_name]
+                case_group.attrs["stl_mesh_name"] = mesh_name
+                if transformation_matrix is not None:
+                    case_group.attrs["transformation_matrix"] = transformation_matrix
+
+    logger.debug(f"Successfully wrote data for case to group {group_name}.")
+    return database
+
+
 def process_all_cases_for_one_stl(
     source_mesh: trimesh.Trimesh,
     wave_frequencies: list | npt.NDArray[np.float64],
@@ -395,11 +439,17 @@ def process_all_cases_for_one_stl(
     output_file: Path,
     update_cases: bool = False,
     combine_cases: bool = False,
-    mesh_name: str,
+    mesh_name: str | None = None,
     origin_translation: npt.NDArray[np.float64] | None = None,
 ) -> None:
     # 1. Use the prepared (and possibly translated) geometry to create the Capytaine body
-    boat, final_mesh = _prepare_capytaine_body(source_mesh=source_mesh, mesh_name=mesh_name, lid=lid, grid_symmetry=grid_symmetry, add_center_of_mass=add_center_of_mass)
+    boat, final_mesh = _prepare_capytaine_body(
+        source_mesh=source_mesh,
+        mesh_name=mesh_name,
+        lid=lid,
+        grid_symmetry=grid_symmetry,
+        add_center_of_mass=add_center_of_mass,
+    )
 
     # 2. Add the final, immersed mesh geometry to the database. This version is now the translated one.
     add_mesh_to_database(output_file, final_mesh, mesh_name, overwrite=update_cases)
@@ -409,45 +459,18 @@ def process_all_cases_for_one_stl(
     for water_level in water_levels:
         for water_depth in water_depths:
             for forward_speed in forwards_speeds:
-                group_name = _generate_case_group_name(mesh_name, water_depth, water_level, forward_speed)
-
-                with h5py.File(output_file, "a") as f:
-                    if group_name in f:
-                        if not update_cases:
-                            logger.info(f"Case '{group_name}' already exists in the database. Skipping.")
-                            continue
-                        logger.info(f"Case '{group_name}' exists, but update_cases is True. Overwriting.")
-                        del f[group_name]
-
-                # Calculate the transformation matrix for this specific case
-                transformation_matrix = None
-                if origin_translation is not None:
-                    translation_vector = boat.center_of_mass - origin_translation
-                    transformation_matrix = trimesh.transformations.translation_matrix(translation_vector)
-
-                logger.info(f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={forward_speed}")
-                database = make_database(
-                    body=boat,
-                    omegas=wave_frequencies,
-                    wave_directions=wave_directions,
-                    water_level=water_level,
-                    water_depth=water_depth,
-                    forward_speed=forward_speed,
-                )
-
-                if combine_cases:
-                    all_datasets.append(database)
-                else:
-                    logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
-                    database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
-                    with h5py.File(output_file, "a") as f:
-                        if group_name in f:
-                            case_group = f[group_name]
-                            case_group.attrs["stl_mesh_name"] = mesh_name
-                            if transformation_matrix is not None:
-                                case_group.attrs["transformation_matrix"] = transformation_matrix
-
-                logger.debug(f"Successfully wrote data for case to group {group_name}.")
+                case_params = {
+                    "omegas": wave_frequencies,
+                    "wave_directions": wave_directions,
+                    "water_level": water_level,
+                    "water_depth": water_depth,
+                    "forward_speed": forward_speed,
+                    "update_cases": update_cases,
+                    "combine_cases": combine_cases,
+                }
+                result_db = _process_and_save_single_case(boat, mesh_name, case_params, output_file, origin_translation)
+                if combine_cases and result_db is not None:
+                    all_datasets.append(result_db)
 
     if combine_cases and all_datasets:
         logger.info("Combining all calculated cases into a single multi-dimensional dataset.")
@@ -510,7 +533,7 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
             if settings.base_origin:
                 f.attrs["base_origin"] = settings.base_origin
             else:
-                f.attrs["base_origin"] = origin_translation # Store the calculated CoM as origin
+                f.attrs["base_origin"] = origin_translation  # Store the calculated CoM as origin
 
     if settings.drafts and base_mesh_path:
         if len(all_files) != 1:

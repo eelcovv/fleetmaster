@@ -3,6 +3,7 @@ import logging
 import re
 import types
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, TypeVar, Union, get_args, get_origin
 
 import click
@@ -12,7 +13,6 @@ from pydantic import BaseModel, ValidationError
 
 from fleetmaster.core.engine import run_simulation_batch
 from fleetmaster.core.settings import SimulationSettings
-from fleetmaster.core.settings import MeshConfig
 
 logger = logging.getLogger(__name__)
 
@@ -141,25 +141,10 @@ def _process_cli_args(kwargs: dict[str, Any], model: type[BaseModel]) -> dict[st
     return cli_args
 
 
-def _load_and_validate_settings(
-    settings_file: str | None,
-    stl_files: tuple[str, ...],
-    kwargs: dict[str, Any],
-) -> tuple[SimulationSettings, str | None]:
-    """Load settings from file or CLI, merge them, and validate."""
-    # Convert simple string paths from CLI into the new MeshConfig structure
-    # This ensures consistency whether input comes from CLI or a simple YAML list
-    if "stl_files" in kwargs and all(isinstance(f, str) for f in kwargs["stl_files"]):
-        kwargs["stl_files"] = [{"file": f} for f in kwargs["stl_files"]]
-    elif "stl_files" not in kwargs and stl_files:
-        kwargs["stl_files"] = [{"file": f} for f in _expand_stl_files(stl_files)]
-
-    expanded_stl_files = _expand_stl_files(stl_files)
-    cli_args = _process_cli_args(kwargs, SimulationSettings)
-
-    base_mesh_path = cli_args.pop("base_mesh", None)
-
-    # --- Validation of input combinations ---
+def _validate_input_combinations(
+    settings_file: str | None, expanded_stl_files: list[str], cli_args: dict[str, Any]
+) -> None:
+    """Validates the combination of provided command-line arguments."""
     has_settings_file = bool(settings_file)
     has_stl_files = bool(expanded_stl_files)
     has_drafts = "drafts" in cli_args
@@ -180,32 +165,65 @@ def _load_and_validate_settings(
         err_msg = "Either a settings file or at least one STL file must be provided."
         raise click.UsageError(err_msg)
 
-    # --- Configuration Loading ---
+
+def _load_config(settings_file: str | None, cli_args: dict[str, Any]) -> dict[str, Any]:
+    """Loads configuration from a YAML file or CLI arguments."""
     config: dict[str, Any] = {}
     if settings_file:
-        if base_mesh_path:
+        if "base_mesh" in cli_args:
             err_msg = "--base-mesh cannot be used with --settings-file."
             raise click.UsageError(err_msg)
         with open(settings_file) as f:
             config = yaml.safe_load(f) or {}
-        base_mesh_path = config.get("base_mesh")
+
+        # Resolve paths relative to the settings file
+        settings_dir = Path(settings_file).parent
+        if "base_mesh" in config and config["base_mesh"] and not Path(config["base_mesh"]).is_absolute():
+            config["base_mesh"] = str(settings_dir / config["base_mesh"])
+
+        if config.get("stl_files"):
+            for i, item in enumerate(config["stl_files"]):
+                path_str = item if isinstance(item, str) else item.get("file")
+                if path_str and not Path(path_str).is_absolute():
+                    new_path = str(settings_dir / path_str)
+                    if isinstance(item, str):
+                        config["stl_files"][i] = new_path
+                    else:
+                        item["file"] = new_path
+
     elif cli_args.get("stl_files"):
         config["stl_files"] = cli_args.pop("stl_files")
 
+    return config
+
+
+def _load_and_validate_settings(
+    settings_file: str | None,
+    stl_files: tuple[str, ...],
+    kwargs: dict[str, Any],
+) -> SimulationSettings:
+    """Load settings from file or CLI, merge them, and validate."""
+    expanded_stl_files = _expand_stl_files(stl_files)
+    cli_args = _process_cli_args(kwargs, SimulationSettings)
+
+    # Convert simple string paths from CLI into the new MeshConfig structure
+    if expanded_stl_files:
+        cli_args["stl_files"] = [{"file": f} for f in expanded_stl_files]
+
+    _validate_input_combinations(settings_file, expanded_stl_files, cli_args)
+    config = _load_config(settings_file, cli_args)
+
     # Determine base mesh if not explicitly set
-    if "stl_files" in config and config["stl_files"]:
+    base_mesh_path = config.get("base_mesh")
+    if config.get("stl_files"):
         # Normalize stl_files to be a list of MeshConfig-like dicts
-        config["stl_files"] = [
-            item if isinstance(item, dict) else {"file": item} for item in config["stl_files"]
-        ]
+        config["stl_files"] = [item if isinstance(item, dict) else {"file": item} for item in config["stl_files"]]
         all_files_in_config = [item["file"] for item in config["stl_files"]]
 
-        if not base_mesh_path:
+        if not base_mesh_path and all_files_in_config:
             base_mesh_path = all_files_in_config[0]
             logger.info(f"No --base-mesh provided. Using the first STL file as the base mesh: {base_mesh_path}")
-
-        if base_mesh_path and base_mesh_path not in all_files_in_config:
-            config["stl_files"].insert(0, {"file": base_mesh_path})
+            config["base_mesh"] = base_mesh_path
 
     config.update(cli_args)
 
@@ -215,10 +233,10 @@ def _load_and_validate_settings(
         click.echo("❌ Error: Invalid settings provided.", err=True)
         click.echo(e, err=True)
         raise click.Abort() from e
-    else:
-        logger.info("Successfully validated simulation settings.")
-        logger.debug(f"Running with settings: {settings.model_dump_json(indent=2)}")
-        return settings, base_mesh_path
+
+    logger.info("Successfully validated simulation settings.")
+    logger.debug(f"Running with settings: {settings.model_dump_json(indent=2)}")
+    return settings
 
 
 def _get_option_type_info(raw_option_type: Any) -> tuple[bool, bool, Any]:
@@ -294,7 +312,7 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
 def run(stl_files: tuple[str, ...], settings_file: str | None, **kwargs: Any) -> None:
     """Runs a set of capytaine simulations based on provided settings."""
     try:
-        settings, base_mesh_path = _load_and_validate_settings(settings_file, stl_files, kwargs)
+        settings = _load_and_validate_settings(settings_file, stl_files, kwargs)
         run_simulation_batch(settings)
         click.echo("✅ Run completed successfully!")
     except (click.UsageError, click.Abort):
