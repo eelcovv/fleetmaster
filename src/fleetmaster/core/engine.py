@@ -279,40 +279,47 @@ def _process_single_stl(
     mesh_name = mesh_name_override or Path(mesh_config.file).stem
     final_mesh_to_process: trimesh.Trimesh | None = None
 
-    # 1. Check if the mesh already exists in the database.
+    # --- Workflow to determine the mesh to process ---
+    # 1. Prioritize loading from the HDF5 database if it already exists.
     try:
         existing_meshes = load_meshes_from_hdf5(output_file, [mesh_name])
         if existing_meshes:
             final_mesh_to_process = existing_meshes[0]
             logger.info(f"Found existing mesh '{mesh_name}' in the database. Using it directly.")
-            # If we use an existing mesh, we assume it's already translated.
-            # We ignore the translation from the settings for this mesh.
-            mesh_config.translation = [0.0, 0.0, 0.0]
     except FileNotFoundError:
-        # The HDF5 file doesn't exist yet, so no meshes can exist.
+        # The HDF5 file doesn't exist yet, so no meshes can exist. This is expected on the first run.
         pass
 
-    # 2. If the mesh does not exist, generate it.
+    # 2. If not in DB, check if a pre-translated STL file exists.
     if final_mesh_to_process is None:
-        logger.info(f"Mesh '{mesh_name}' not found in database. Generating from '{mesh_config.file}' with translation.")
+        target_stl_path = Path(mesh_config.file)
+        if target_stl_path.exists():
+            logger.info(
+                f"Mesh '{mesh_name}' not in DB, but found STL file: '{target_stl_path}'. Loading and adding to DB."
+            )
+            # Load the existing, presumably pre-translated, STL file.
+            final_mesh_to_process = _prepare_trimesh_geometry(stl_file=str(target_stl_path))
+        else:
+            # 3. If neither DB entry nor STL file exists, generate the mesh.
+            logger.info(
+                f"Mesh '{mesh_name}' not found in DB or as STL. Generating from source with translation."
+            )
+            # Load the base STL and apply the specified translation.
+            translated_mesh = _prepare_trimesh_geometry(
+                stl_file=str(target_stl_path),  # The source file is the same as the target in this case
+                translation_x=mesh_config.translation[0],
+                translation_y=mesh_config.translation[1],
+                translation_z=mesh_config.translation[2],
+            )
+            # Save the newly generated, translated mesh to a separate STL file for inspection.
+            logger.info(f"Saving newly generated translated mesh to: {target_stl_path}")
+            translated_mesh.export(target_stl_path)
+            final_mesh_to_process = translated_mesh
 
-        # Load the base STL and apply the specified translation.
-        translated_mesh = _prepare_trimesh_geometry(
-            stl_file=mesh_config.file,
-            translation_x=mesh_config.translation[0],
-            translation_y=mesh_config.translation[1],
-            translation_z=mesh_config.translation[2],
-        )
-
-        # Save the newly generated, translated mesh to a separate STL file for inspection.
-        output_stl_path = output_file.with_name(f"{mesh_name}.stl")
-        logger.info(f"Saving newly generated translated mesh to: {output_stl_path}")
-        translated_mesh.export(output_stl_path)
-
-        final_mesh_to_process = translated_mesh
-
-    # 3. Run the complete processing pipeline with the determined mesh.
-    _run_pipeline_for_mesh(final_mesh_to_process, mesh_config, settings, output_file, mesh_name, origin_translation)
+    # 4. Run the complete processing pipeline with the determined mesh.
+    _run_pipeline_for_mesh(
+        final_mesh_to_process, mesh_config, settings, output_file, mesh_name, origin_translation
+    )
 
 
 def _run_pipeline_for_mesh(
