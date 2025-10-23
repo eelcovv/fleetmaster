@@ -140,16 +140,20 @@ def _prepare_capytaine_body(
 ) -> tuple[Any, trimesh.Trimesh]:
     """
     Configures a Capytaine FloatingBody from a pre-prepared trimesh object.
+
     The `center_of_mass` for Capytaine is determined by `mesh_config.local_origin`,
-    falling back to the mesh's geometric center of mass if `add_center_of_mass` is true.
+    falling back to the mesh's geometric center of mass. The `add_center_of_mass`
+    flag can be used to disable this fallback and default to (0,0,0) if no
+    `local_origin` is specified.
     """
     cog = None
     if mesh_config.local_origin:
         cog = np.array(mesh_config.local_origin)
         logger.debug(f"Using specified local_origin {cog} as the center of mass for Capytaine.")
-    elif add_center_of_mass:
+    else:
+        # If no local_origin is specified, use the center of mass of the (already translated) source_mesh.
         cog = source_mesh.center_mass
-        logger.debug(f"Using geometric center of mass {cog} for Capytaine.")
+        logger.debug(f"Using geometric center of mass {cog} of the translated mesh for Capytaine.")
 
     # 1. Save the transformed mesh to a temporary file and load it with Capytaine.
     # This is more robust than creating a cpt.Mesh from vertices/faces directly.
