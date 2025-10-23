@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 
 from fleetmaster.core.engine import run_simulation_batch
 from fleetmaster.core.settings import SimulationSettings
+from fleetmaster.core.settings import MeshConfig
 
 logger = logging.getLogger(__name__)
 
@@ -144,10 +145,19 @@ def _load_and_validate_settings(
     settings_file: str | None,
     stl_files: tuple[str, ...],
     kwargs: dict[str, Any],
-) -> SimulationSettings:
+) -> tuple[SimulationSettings, str | None]:
     """Load settings from file or CLI, merge them, and validate."""
+    # Convert simple string paths from CLI into the new MeshConfig structure
+    # This ensures consistency whether input comes from CLI or a simple YAML list
+    if "stl_files" in kwargs and all(isinstance(f, str) for f in kwargs["stl_files"]):
+        kwargs["stl_files"] = [{"file": f} for f in kwargs["stl_files"]]
+    elif "stl_files" not in kwargs and stl_files:
+        kwargs["stl_files"] = [{"file": f} for f in _expand_stl_files(stl_files)]
+
     expanded_stl_files = _expand_stl_files(stl_files)
     cli_args = _process_cli_args(kwargs, SimulationSettings)
+
+    base_mesh_path = cli_args.pop("base_mesh", None)
 
     # --- Validation of input combinations ---
     has_settings_file = bool(settings_file)
@@ -173,10 +183,29 @@ def _load_and_validate_settings(
     # --- Configuration Loading ---
     config: dict[str, Any] = {}
     if settings_file:
+        if base_mesh_path:
+            err_msg = "--base-mesh cannot be used with --settings-file."
+            raise click.UsageError(err_msg)
         with open(settings_file) as f:
             config = yaml.safe_load(f) or {}
-    elif expanded_stl_files:
-        config["stl_files"] = expanded_stl_files
+        base_mesh_path = config.get("base_mesh")
+    elif cli_args.get("stl_files"):
+        config["stl_files"] = cli_args.pop("stl_files")
+
+    # Determine base mesh if not explicitly set
+    if "stl_files" in config and config["stl_files"]:
+        # Normalize stl_files to be a list of MeshConfig-like dicts
+        config["stl_files"] = [
+            item if isinstance(item, dict) else {"file": item} for item in config["stl_files"]
+        ]
+        all_files_in_config = [item["file"] for item in config["stl_files"]]
+
+        if not base_mesh_path:
+            base_mesh_path = all_files_in_config[0]
+            logger.info(f"No --base-mesh provided. Using the first STL file as the base mesh: {base_mesh_path}")
+
+        if base_mesh_path and base_mesh_path not in all_files_in_config:
+            config["stl_files"].insert(0, {"file": base_mesh_path})
 
     config.update(cli_args)
 
@@ -189,7 +218,7 @@ def _load_and_validate_settings(
     else:
         logger.info("Successfully validated simulation settings.")
         logger.debug(f"Running with settings: {settings.model_dump_json(indent=2)}")
-        return settings
+        return settings, base_mesh_path
 
 
 def _get_option_type_info(raw_option_type: Any) -> tuple[bool, bool, Any]:
@@ -231,7 +260,7 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
     def decorator(f: F) -> F:
         # Decorators are applied bottom-up, so reverse the order of fields
         for name, field in reversed(model.model_fields.items()):
-            # Skip stl_files as it's handled as a direct argument
+            # Skip stl_files as it's handled as a direct argument. base_mesh is handled separately.
             if name == "stl_files":
                 continue
 
@@ -265,7 +294,7 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
 def run(stl_files: tuple[str, ...], settings_file: str | None, **kwargs: Any) -> None:
     """Runs a set of capytaine simulations based on provided settings."""
     try:
-        settings = _load_and_validate_settings(settings_file, stl_files, kwargs)
+        settings, base_mesh_path = _load_and_validate_settings(settings_file, stl_files, kwargs)
         run_simulation_batch(settings)
         click.echo("✅ Run completed successfully!")
     except (click.UsageError, click.Abort):
