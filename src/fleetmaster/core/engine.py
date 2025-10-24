@@ -152,8 +152,8 @@ def _prepare_capytaine_body(
         cog = np.array(mesh_config.cog)
         logger.debug(f"Using specified COG {cog} as the center of mass for Capytaine.")
     else:
-        geometric_cog = source_mesh.center_mass
-        cog = geometric_cog
+        # If no local_origin is specified, use the center of mass of the (already translated) source_mesh.
+        cog = source_mesh.center_mass
         logger.debug(f"Using geometric center of mass {cog} of the translated mesh for Capytaine.")
 
     # 1. Save the transformed mesh to a temporary file and load it with Capytaine.
@@ -188,19 +188,14 @@ def _prepare_capytaine_body(
 
     # 5. Extract the final mesh that Capytaine will use for the database. After keep_immersed_part,
     # boat.mesh contains the correct vertices and faces for both regular and symmetric meshes.
-    if len(boat.mesh.faces) == 0:
-        logger.warning(
-            f"The final mesh for '{mesh_name}' has no faces after processing by Capytaine. "
-            "This can happen if the body is entirely out of the water. No mesh will be added to the database."
-        )
-        return boat, None
-    final_mesh = trimesh.Trimesh(vertices=boat.mesh.vertices, faces=boat.mesh.faces)
-    return boat, final_mesh
+    final_mesh_trimesh = trimesh.Trimesh(vertices=boat.mesh.vertices, faces=boat.mesh.faces)
+
+    return boat, final_mesh_trimesh
 
 
 def add_mesh_to_database(
-    output_file: Path, mesh_to_add: trimesh.Trimesh | None, mesh_name: str, overwrite: bool = False
-) -> bool:
+    output_file: Path, mesh_to_add: trimesh.Trimesh, mesh_name: str, overwrite: bool = False
+) -> None:
     """
     Adds a mesh and its geometric properties to the HDF5 database under the MESH_GROUP_NAME.
 
@@ -209,17 +204,10 @@ def add_mesh_to_database(
 
     Args:
         mesh_to_add: The trimesh object of the mesh to be added.
-
-    Returns:
-        True if the mesh was added or updated, False otherwise.
     """
-    if mesh_to_add is None:
-        logger.warning(f"Cannot add mesh '{mesh_name}' to database because it is None.")
-        return False
-
     mesh_group_path = f"{MESH_GROUP_NAME}/{mesh_name}"
-    logger.debug(f"Adding mesh {mesh_group_path} to {output_file}")
 
+    # Export the trimesh to an in-memory STL binary string and compute its hash.
     new_stl_content = mesh_to_add.export(file_type="stl")
     new_hash = hashlib.sha256(new_stl_content).hexdigest()
 
@@ -229,26 +217,23 @@ def add_mesh_to_database(
             stored_hash = existing_group.attrs.get("sha256")
 
             if stored_hash == new_hash:
-                logger.debug(f"Mesh '{mesh_name}' has the same SHA256 hash. Skipping.")
-                return False
+                logger.info(f"Mesh '{mesh_name}' has the same SHA256 hash. Skipping.")
+                return
 
             if not overwrite:
                 logger.warning(
                     f"Mesh '{mesh_name}' is different from the one in the database (SHA256 mismatch). "
                     "Use --overwrite-meshes to overwrite."
                 )
-                return False
+                return
 
             logger.warning(f"Overwriting existing mesh '{mesh_name}' as --overwrite-meshes is specified.")
             del f[mesh_group_path]
 
-    if not new_stl_content:
-        logger.warning(f"Cannot add mesh '{mesh_name}' to database because its content is empty.")
-        return False
-
         logger.debug(f"Adding mesh '{mesh_name}' to group '{MESH_GROUP_NAME}'...")
         group = f.create_group(mesh_group_path)
 
+        # Calculate geometric properties from the new mesh content
         fingerprint_attrs = {
             "volume": mesh_to_add.volume,
             "cog_x": mesh_to_add.center_mass[0],
@@ -273,7 +258,6 @@ def add_mesh_to_database(
         # otherwise h5py tries to interpret it as a string and fails on NULL bytes.
         group.create_dataset("stl_content", data=np.void(new_stl_content))
         logger.debug("  - Wrote dataset: stl_content")
-    return True
 
 
 def _format_value_for_name(value: float) -> str:
@@ -301,7 +285,7 @@ def _process_single_stl(
     origin_translation: npt.NDArray[np.float64] | None = None,
 ) -> None:
     """
-    Checks if a mesh exists in the database. If so, uses it. (trimesh)
+    Checks if a mesh exists in the database. If so, uses it.
     If not, generates it, saves it, and then uses it for the simulation pipeline.
     """
     mesh_name = mesh_name_override or Path(mesh_config.file).stem
@@ -313,7 +297,7 @@ def _process_single_stl(
         existing_meshes = load_meshes_from_hdf5(output_file, [mesh_name])
         if existing_meshes:
             final_mesh_to_process = existing_meshes[0]
-            logger.info(f"Found existing mesh '{mesh_name}' in the database. Using it directly. (trimesh)")
+            logger.info(f"Found existing mesh '{mesh_name}' in the database. Using it directly.")
     except FileNotFoundError:
         # The HDF5 file doesn't exist yet, so no meshes can exist. This is expected on the first run.
         pass
@@ -594,7 +578,7 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
         else:
             # Fallback to using the center of mass if base_origin is not provided.
             logger.info(f"Using center of mass of '{base_mesh_path}' to define the coordinate origin.")
-            base_mesh_for_origin = trimesh.load_mesh(base_mesh_path)
+            base_mesh_for_origin = _prepare_trimesh_geometry(base_mesh_path)
             origin_translation = base_mesh_for_origin.center_mass
             logger.info(f"Database origin (center of mass of base mesh) set to: {origin_translation}")
 
