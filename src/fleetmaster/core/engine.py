@@ -206,11 +206,19 @@ def _prepare_capytaine_body(
 
     # 5. Extract the final mesh that Capytaine will use for the database. After keep_immersed_part,
     # boat.mesh contains the correct vertices and faces for both regular and symmetric meshes.
-    final_mesh_polydata = vtk.vtkPolyData()
-    final_mesh_polydata.SetPoints(vtk.util.numpy_support.numpy_to_vtk(boat.mesh.vertices))
-    final_mesh_polydata.SetPolys(
-        vtk.util.numpy_support.numpy_to_vtkIdTypeArray(np.c_[np.full(len(boat.mesh.faces), 3), boat.mesh.faces])
+    points = vtk.vtkPoints()
+    points.SetData(vtk.util.numpy_support.numpy_to_vtk(boat.mesh.vertices))
+
+    # Create a cell array to store the faces
+    polys = vtk.vtkCellArray()
+    id_array = vtk.util.numpy_support.numpy_to_vtkIdTypeArray(
+        np.c_[np.full(len(boat.mesh.faces), 3), boat.mesh.faces].ravel()
     )
+    polys.SetCells(len(boat.mesh.faces), id_array)
+
+    final_mesh_polydata = vtk.vtkPolyData()
+    final_mesh_polydata.SetPoints(points)
+    final_mesh_polydata.SetPolys(polys)
 
     return boat, final_mesh_polydata
 
@@ -229,12 +237,23 @@ def add_mesh_to_database(
     """
     mesh_group_path = f"{MESH_GROUP_NAME}/{mesh_name}"
 
-    # Export the vtkPolyData to an in-memory STL binary string and compute its hash.
-    writer = vtk.vtkSTLWriter()
-    writer.SetInputData(mesh_to_add)
-    writer.WriteToOutputStringOn()
-    writer.Update()
-    new_stl_content = writer.GetOutputString()
+    # Export the vtkPolyData to a temporary STL file to get its binary content and compute its hash.
+    temp_path = None
+    new_stl_content = b""
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as temp_file:
+            temp_path = Path(temp_file.name)
+            writer = vtk.vtkSTLWriter()
+            writer.SetFileName(str(temp_path))
+            writer.SetInputData(mesh_to_add)
+            writer.Write()
+
+        # Read the content of the temporary file
+        with open(temp_path, "rb") as f:
+            new_stl_content = f.read()
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink()
 
     new_hash = hashlib.sha256(new_stl_content).hexdigest()
 

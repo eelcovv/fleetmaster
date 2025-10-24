@@ -1,4 +1,5 @@
 import logging
+import tempfile
 from pathlib import Path
 
 import h5py
@@ -24,13 +25,21 @@ def load_meshes_from_hdf5(
                 continue
             raw = group["stl_content"][()]
             try:
-                # Load STL content using VTK
-                reader = vtk.vtkSTLReader()
-                reader.ReadFromInputStringOn()
-                reader.SetInputString(raw.tobytes())
-                reader.Update()
-                poly_data = reader.GetOutput()
-                meshes.append(poly_data)
+                # vtkSTLReader cannot read from memory. Write to a temporary file first.
+                with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as temp_file:
+                    temp_path = Path(temp_file.name)
+                    temp_file.write(raw.tobytes())
+
+                try:
+                    reader = vtk.vtkSTLReader()
+                    reader.SetFileName(str(temp_path))
+                    reader.Update()
+                    poly_data = reader.GetOutput()
+                    meshes.append(poly_data)
+                finally:
+                    # Ensure the temporary file is always deleted.
+                    temp_path.unlink()
+
             except Exception:
                 logger.exception("Failed to parse mesh %r", name)
     return meshes
