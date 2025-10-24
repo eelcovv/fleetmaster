@@ -41,3 +41,4 @@
 *.mp4    binary
 *.mov    binary
 *.blend  binary
+*.stl    binary
