@@ -9,7 +9,7 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import trimesh
+import vtk
 import xarray as xr
 
 from .exceptions import LidAndSymmetryEnabledError
@@ -106,53 +106,69 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
     return output_file
 
 
-def _prepare_trimesh_geometry(
+def _prepare_vtk_geometry(
     stl_file: str,
     translation_x: float = 0.0,
     translation_y: float = 0.0,
     translation_z: float = 0.0,
-) -> trimesh.Trimesh:
+) -> vtk.vtkPolyData:
     """
-    Loads an STL file and applies specified translations.
+    Loads an STL file using VTK and applies specified translations.
 
     Returns:
-        A trimesh.Trimesh object representing the transformed geometry.
+        A vtk.vtkPolyData object representing the transformed geometry.
     """
-    transformed_mesh = trimesh.load_mesh(stl_file)
+    reader = vtk.vtkSTLReader()
+    reader.SetFileName(stl_file)
+    reader.Update()
+    poly_data = reader.GetOutput()
 
     # Apply translation if specified
     if translation_x != 0.0 or translation_y != 0.0 or translation_z != 0.0:
         translation_vector = np.array([translation_x, translation_y, translation_z])
         logger.debug(f"Applying mesh translation: {translation_vector}")
-        transform_matrix = trimesh.transformations.translation_matrix(translation_vector)
-        transformed_mesh.apply_transform(transform_matrix)
+        transform = vtk.vtkTransform()
+        transform.Translate(translation_vector)
 
-    return transformed_mesh
+        transform_filter = vtk.vtkTransformPolyDataFilter()
+        transform_filter.SetInputData(poly_data)
+        transform_filter.SetTransform(transform)
+        transform_filter.Update()
+        return transform_filter.GetOutput()
+
+    return poly_data
 
 
 def _prepare_capytaine_body(
-    source_mesh: trimesh.Trimesh,
+    source_mesh: vtk.vtkPolyData,
     mesh_name: str,
     mesh_config: MeshConfig,
     lid: bool,
     grid_symmetry: bool,
     add_center_of_mass: bool = False,
-) -> tuple[Any, trimesh.Trimesh]:
+) -> tuple[Any, vtk.vtkPolyData]:
     """
     Configures a Capytaine FloatingBody from a pre-prepared trimesh object.
- 
+
     The `center_of_mass` for Capytaine is determined by `mesh_config.cog`,
     falling back to the mesh's geometric center of mass. The `add_center_of_mass`
     flag can be used to disable this fallback and default to (0,0,0) if no
     `cog` is specified.
     """
     cog = None
+
+    # Calculate center of mass from the VTK mesh
+    center_of_mass_filter = vtk.vtkCenterOfMass()
+    center_of_mass_filter.SetInputData(source_mesh)
+    center_of_mass_filter.SetUseScalarsAsWeights(False)
+    center_of_mass_filter.Update()
+    geometric_cog = np.array(center_of_mass_filter.GetCenter())
+
     if mesh_config.cog:
         cog = np.array(mesh_config.cog)
         logger.debug(f"Using specified COG {cog} as the center of mass for Capytaine.")
     else:
-        # If no local_origin is specified, use the center of mass of the (already translated) source_mesh.
-        cog = source_mesh.center_mass
+        cog = geometric_cog
         logger.debug(f"Using geometric center of mass {cog} of the translated mesh for Capytaine.")
 
     # 1. Save the transformed mesh to a temporary file and load it with Capytaine.
@@ -162,8 +178,11 @@ def _prepare_capytaine_body(
     try:
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as temp_file:
             temp_path = Path(temp_file.name)
-            # Step 1: Write to the temporary file.
-            source_mesh.export(temp_file, file_type="stl")
+            # Step 1: Write the vtkPolyData to the temporary file.
+            writer = vtk.vtkSTLWriter()
+            writer.SetFileName(str(temp_path))
+            writer.SetInputData(source_mesh)
+            writer.Write()
             logger.debug(f"Exported transformed mesh to temporary file: {temp_path}")
 
         # Step 2: Read from the now-closed temporary file. This avoids race conditions.
@@ -187,13 +206,17 @@ def _prepare_capytaine_body(
 
     # 5. Extract the final mesh that Capytaine will use for the database. After keep_immersed_part,
     # boat.mesh contains the correct vertices and faces for both regular and symmetric meshes.
-    final_mesh_trimesh = trimesh.Trimesh(vertices=boat.mesh.vertices, faces=boat.mesh.faces)
+    final_mesh_polydata = vtk.vtkPolyData()
+    final_mesh_polydata.SetPoints(vtk.util.numpy_support.numpy_to_vtk(boat.mesh.vertices))
+    final_mesh_polydata.SetPolys(
+        vtk.util.numpy_support.numpy_to_vtkIdTypeArray(np.c_[np.full(len(boat.mesh.faces), 3), boat.mesh.faces])
+    )
 
-    return boat, final_mesh_trimesh
+    return boat, final_mesh_polydata
 
 
 def add_mesh_to_database(
-    output_file: Path, mesh_to_add: trimesh.Trimesh, mesh_name: str, overwrite: bool = False
+    output_file: Path, mesh_to_add: vtk.vtkPolyData, mesh_name: str, overwrite: bool = False
 ) -> None:
     """
     Adds a mesh and its geometric properties to the HDF5 database under the MESH_GROUP_NAME.
@@ -202,12 +225,17 @@ def add_mesh_to_database(
     If the data is different, it will either raise a warning or overwrite if `overwrite` is True.
 
     Args:
-        mesh_to_add: The trimesh object of the mesh to be added.
+        mesh_to_add: The vtkPolyData object of the mesh to be added.
     """
     mesh_group_path = f"{MESH_GROUP_NAME}/{mesh_name}"
 
-    # Export the trimesh to an in-memory STL binary string and compute its hash.
-    new_stl_content = mesh_to_add.export(file_type="stl")
+    # Export the vtkPolyData to an in-memory STL binary string and compute its hash.
+    writer = vtk.vtkSTLWriter()
+    writer.SetInputData(mesh_to_add)
+    writer.WriteToOutputStringOn()
+    writer.Update()
+    new_stl_content = writer.GetOutputString()
+
     new_hash = hashlib.sha256(new_stl_content).hexdigest()
 
     with h5py.File(output_file, "a") as f:
@@ -232,15 +260,28 @@ def add_mesh_to_database(
         logger.debug(f"Adding mesh '{mesh_name}' to group '{MESH_GROUP_NAME}'...")
         group = f.create_group(mesh_group_path)
 
-        # Calculate geometric properties from the new mesh content
+        # Calculate geometric properties from the new mesh content using VTK
+        mass_properties = vtk.vtkMassProperties()
+        mass_properties.SetInputData(mesh_to_add)
+        mass_properties.Update()
+
+        center_of_mass_filter = vtk.vtkCenterOfMass()
+        center_of_mass_filter.SetInputData(mesh_to_add)
+        center_of_mass_filter.SetUseScalarsAsWeights(False)
+        center_of_mass_filter.Update()
+        cog = center_of_mass_filter.GetCenter()
+
+        bounds = mesh_to_add.GetBounds()
+        extents = [bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4]]
+
         fingerprint_attrs = {
-            "volume": mesh_to_add.volume,
-            "cog_x": mesh_to_add.center_mass[0],
-            "cog_y": mesh_to_add.center_mass[1],
-            "cog_z": mesh_to_add.center_mass[2],
-            "bbox_lx": mesh_to_add.bounding_box.extents[0],
-            "bbox_ly": mesh_to_add.bounding_box.extents[1],
-            "bbox_lz": mesh_to_add.bounding_box.extents[2],
+            "volume": mass_properties.GetVolume(),
+            "cog_x": cog[0],
+            "cog_y": cog[1],
+            "cog_z": cog[2],
+            "bbox_lx": extents[0],
+            "bbox_ly": extents[1],
+            "bbox_lz": extents[2],
         }
         for key, value in fingerprint_attrs.items():
             group.attrs[key] = value
@@ -249,7 +290,15 @@ def add_mesh_to_database(
         # Add hash and original file name as attributes
         group.attrs["sha256"] = new_hash
 
-        group.create_dataset("inertia_tensor", data=mesh_to_add.moment_inertia)
+        # VTK's inertia tensor is about the origin. This is a simplification.
+        # For a more accurate inertia tensor about the COG, parallel axis theorem would be needed.
+        # This implementation matches the simplicity of the previous trimesh call.
+        inertia_tensor = np.array([
+            [mass_properties.GetKxx(), mass_properties.GetKxy(), mass_properties.GetKxz()],
+            [mass_properties.GetKxy(), mass_properties.GetKyy(), mass_properties.GetKyz()],
+            [mass_properties.GetKxz(), mass_properties.GetKyz(), mass_properties.GetKzz()],
+        ])
+        group.create_dataset("inertia_tensor", data=inertia_tensor)
         logger.debug("  - Wrote dataset: inertia_tensor")
 
         # Store the binary content of the final, transformed STL
@@ -288,7 +337,7 @@ def _process_single_stl(
     If not, generates it, saves it, and then uses it for the simulation pipeline.
     """
     mesh_name = mesh_name_override or Path(mesh_config.file).stem
-    final_mesh_to_process: trimesh.Trimesh | None = None
+    final_mesh_to_process: vtk.vtkPolyData | None = None
 
     # --- Workflow to determine the mesh to process ---
     # 1. Prioritize loading from the HDF5 database if it already exists.
@@ -309,12 +358,10 @@ def _process_single_stl(
                 f"Mesh '{mesh_name}' not in DB, but found STL file: '{target_stl_path}'. Loading and adding to DB."
             )
             # Load the existing, presumably pre-translated, STL file.
-            final_mesh_to_process = _prepare_trimesh_geometry(stl_file=str(target_stl_path))
+            final_mesh_to_process = _prepare_vtk_geometry(stl_file=str(target_stl_path))
         else:
             # 3. If neither DB entry nor STL file exists, generate the mesh.
-            logger.info(
-                f"Mesh '{mesh_name}' not found in DB or as STL file. Attempting to generate it."
-            )
+            logger.info(f"Mesh '{mesh_name}' not found in DB or as STL file. Attempting to generate it.")
             # Use the global base_mesh as the source for generation.
             source_file_path = settings.base_mesh
             if not source_file_path or not Path(source_file_path).exists():
@@ -325,7 +372,7 @@ def _process_single_stl(
                 raise FileNotFoundError(err_msg)
 
             # Load the base STL and apply the specified translation.
-            translated_mesh = _prepare_trimesh_geometry(
+            translated_mesh = _prepare_vtk_geometry(
                 stl_file=str(source_file_path),
                 translation_x=mesh_config.translation[0],
                 translation_y=mesh_config.translation[1],
@@ -333,17 +380,18 @@ def _process_single_stl(
             )
             # Save the newly generated, translated mesh to a separate STL file for inspection.
             logger.info(f"Saving newly generated translated mesh to: {target_stl_path}")
-            translated_mesh.export(target_stl_path)
+            writer = vtk.vtkSTLWriter()
+            writer.SetFileName(str(target_stl_path))
+            writer.SetInputData(translated_mesh)
+            writer.Write()
             final_mesh_to_process = translated_mesh
 
     # 4. Run the complete processing pipeline with the determined mesh.
-    _run_pipeline_for_mesh(
-        final_mesh_to_process, mesh_config, settings, output_file, mesh_name, origin_translation
-    )
+    _run_pipeline_for_mesh(final_mesh_to_process, mesh_config, settings, output_file, mesh_name, origin_translation)
 
 
 def _run_pipeline_for_mesh(
-    source_mesh: trimesh.Trimesh,
+    source_mesh: vtk.vtkPolyData,
     mesh_config: MeshConfig,
     settings: SimulationSettings,
     output_file: Path,
@@ -440,7 +488,14 @@ def _process_and_save_single_case(
         # The transformation is the translation from the global origin to the mesh's COG for this case.
         # Note: boat.center_of_mass is the COG used for calculation, not necessarily the geometric center.
         translation_vector = boat.center_of_mass - origin_translation
-        transformation_matrix = trimesh.transformations.translation_matrix(translation_vector)
+
+        # Create a VTK transform for the translation
+        transform = vtk.vtkTransform()
+        transform.Translate(translation_vector)
+
+        # Get the 4x4 matrix from the transform and convert to numpy
+        vtk_matrix = transform.GetMatrix()
+        transformation_matrix = np.array([[vtk_matrix.GetElement(r, c) for c in range(4)] for r in range(4)])
 
     logger.info(
         f"Starting BEM calculations for water_level={case_params['water_level']}, "
@@ -473,7 +528,7 @@ def _process_and_save_single_case(
 
 
 def process_all_cases_for_one_stl(
-    source_mesh: trimesh.Trimesh,
+    source_mesh: vtk.vtkPolyData,
     wave_frequencies: list | npt.NDArray[np.float64],
     wave_directions: list | npt.NDArray[np.float64],
     water_depths: list | npt.NDArray[np.float64],
@@ -581,8 +636,12 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
         else:
             # Fallback to using the center of mass if base_origin is not provided.
             logger.info(f"Using center of mass of '{base_mesh_path}' to define the coordinate origin.")
-            base_mesh_for_origin = _prepare_trimesh_geometry(base_mesh_path)
-            origin_translation = base_mesh_for_origin.center_mass
+            base_mesh_for_origin = _prepare_vtk_geometry(base_mesh_path)
+            center_of_mass_filter = vtk.vtkCenterOfMass()
+            center_of_mass_filter.SetInputData(base_mesh_for_origin)
+            center_of_mass_filter.SetUseScalarsAsWeights(False)
+            center_of_mass_filter.Update()
+            origin_translation = np.array(center_of_mass_filter.GetCenter())
             logger.info(f"Database origin (center of mass of base mesh) set to: {origin_translation}")
 
         # Store the base reference information in the root of the HDF5 file
