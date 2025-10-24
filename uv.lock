@@ -739,29 +739,20 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rich" },
     { name = "trimesh" },
-    { name = "vtk" },
     { name = "xarray", version = "2025.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "xarray", version = "2025.10.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 
 [package.optional-dependencies]
-dev = [
-    { name = "deptry" },
-    { name = "mkdocs" },
-    { name = "mkdocs-material" },
-    { name = "mkdocstrings", extra = ["python"] },
-    { name = "mypy" },
-    { name = "pandas-stubs" },
-    { name = "pre-commit" },
+all = [
     { name = "pyside6-essentials" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "tox-uv" },
-    { name = "types-pyyaml" },
+    { name = "vtk" },
 ]
 gui = [
     { name = "pyside6-essentials" },
+]
+vtk = [
+    { name = "vtk" },
 ]
 
 [package.dev-dependencies]
@@ -773,6 +764,7 @@ dev = [
     { name = "mypy" },
     { name = "pandas-stubs" },
     { name = "pre-commit" },
+    { name = "pymeshup" },
     { name = "pyside6-essentials" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -780,42 +772,29 @@ dev = [
     { name = "ruff" },
     { name = "tox-uv" },
     { name = "types-pyyaml" },
-]
-pymeshlab = [
-    { name = "pymeshup" },
+    { name = "vtk" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "capytaine", specifier = ">=2.3.1" },
     { name = "click", specifier = ">=8.1.8" },
-    { name = "deptry", marker = "extra == 'dev'", specifier = ">=0.22.0" },
     { name = "h5netcdf", specifier = ">=1.7.0" },
     { name = "h5py", specifier = ">=3.15.0" },
-    { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.4.2" },
-    { name = "mkdocs-material", marker = "extra == 'dev'", specifier = ">=8.5.10" },
-    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'dev'", specifier = ">=0.26.1" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.18.2" },
     { name = "numpy", specifier = ">=2.0.2" },
     { name = "pandas", specifier = ">=2.3.3" },
-    { name = "pandas-stubs", marker = "extra == 'dev'", specifier = ">=2.3.2.250926" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.3.0" },
     { name = "pydantic", specifier = ">=2.12.2" },
     { name = "pyglet", specifier = "<2" },
-    { name = "pyside6-essentials", marker = "extra == 'dev'", specifier = ">=6.10.0" },
+    { name = "pyside6-essentials", marker = "extra == 'all'", specifier = ">=6.10.0" },
     { name = "pyside6-essentials", marker = "extra == 'gui'", specifier = ">=6.10.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.2.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rich", specifier = ">=14.2.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.1" },
-    { name = "tox-uv", marker = "extra == 'dev'", specifier = ">=1.11.3" },
     { name = "trimesh", specifier = ">=4.8.3" },
-    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.12.12" },
-    { name = "vtk", specifier = ">=9.5.2" },
+    { name = "vtk", marker = "extra == 'all'", specifier = ">=9.3" },
+    { name = "vtk", marker = "extra == 'vtk'", specifier = ">=9.3" },
     { name = "xarray", specifier = ">=2025.6.1" },
 ]
-provides-extras = ["gui", "dev"]
+provides-extras = ["gui", "vtk", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -826,6 +805,7 @@ dev = [
     { name = "mypy", specifier = ">=1.18.2" },
     { name = "pandas-stubs", specifier = ">=2.3.2.250926" },
     { name = "pre-commit", specifier = ">=4.3.0" },
+    { name = "pymeshup", specifier = ">=25.5.3" },
     { name = "pyside6-essentials", specifier = ">=6.10.0" },
     { name = "pytest", specifier = ">=7.2.0" },
     { name = "pytest-cov", specifier = ">=4.0.0" },
@@ -833,8 +813,8 @@ dev = [
     { name = "ruff", specifier = ">=0.14.1" },
     { name = "tox-uv", specifier = ">=1.11.3" },
     { name = "types-pyyaml", specifier = ">=6.0.12.12" },
+    { name = "vtk", specifier = ">=9.5.2" },
 ]
-pymeshlab = [{ name = "pymeshup", specifier = ">=25.5.3" }]
 
 [[package]]
 name = "fonttools"

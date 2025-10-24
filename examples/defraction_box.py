@@ -12,6 +12,7 @@ def main(grid_symmetry: bool):
     if grid_symmetry:
         file_base += "_half"
 
+
     length = 10
     width = 4
     height = 3
