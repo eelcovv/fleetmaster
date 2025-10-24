@@ -22,6 +22,7 @@ BOX_WIDTH = 4
 BOX_HEIGHT = 3
 DRAFTS = [1, 2]
 REGRID_PERCENTAGE = 3
+FILE_BASE = "defraction_box"
 
 
 def main(grid_symmetry: bool, output_dir: Path):
@@ -33,12 +34,12 @@ def main(grid_symmetry: bool, output_dir: Path):
                               at the xz plane (port/starboard symmetry).
         output_dir (Path): The directory where the generated STL files will be saved.
     """
-    file_base = "defraction_box"
     if grid_symmetry:
-        print("Grid symmetry on")
-        file_base += "_half"
+        file_base = FILE_BASE + "_half"
+        print(f"Grid symmetry on with file base {file_base}")
     else:
-        print("Grid symmetry off.")
+        file_base = FILE_BASE + "_full"
+        print(f"Grid symmetry off with file base {file_base}")
 
     output_dir.mkdir(exist_ok=True)
 

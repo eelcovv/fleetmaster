@@ -106,10 +106,20 @@ generate-box-mesh-half:
 
 # Run fleetmaster examples
 fleetmaster: fleetmaster-full fleetmaster-half
-fleetmaster-full:
-    @fleetmaster -v run --settings-file examples/settings.yml; exit 0
-fleetmaster-half:
-    @fleetmaster -v run --settings-file examples/settings.yml; exit 0
+fleetmaster-full: generate-box-mesh-full
+    @fleetmaster -v run --settings-file examples/settings_full.yml; exit 0
+fleetmaster-half: generate-box-mesh-half
+    @fleetmaster -v run --settings-file examples/settings_half.yml; exit 0
+
+# clean examples directory
+clean-examples: clean-examples-stl clean-examples-hdf5
+# clean examples stl files
+clean-examples-stl:
+    @rm examples/*stl
+# clean examples hdf5 files
+clean-examples-hdf5:
+    @rm examples/*hdf5
+
 
 # ---------------------------------------
 # Help / menu
