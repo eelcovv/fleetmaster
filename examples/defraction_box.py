@@ -35,7 +35,10 @@ def main(grid_symmetry: bool, output_dir: Path):
     """
     file_base = "defraction_box"
     if grid_symmetry:
+        print("Grid symmetry on")
         file_base += "_half"
+    else:
+        print("Grid symmetry off.")
 
     output_dir.mkdir(exist_ok=True)
 
@@ -53,7 +56,7 @@ def main(grid_symmetry: bool, output_dir: Path):
     # create the base mesh for the wave interaction with x = 0 in the centre
     box_base = box_buoy.move(x=-half_length)
     if grid_symmetry:
-        print("Grid symmetry on: cutting mesh at xz plane")
+        print("Cutting at xy plane")
         box_base = box_base.cut_at_xz()
     box_base_mesh = box_base.regrid(pct=REGRID_PERCENTAGE)
     print(f"Saving base mesh {box_base_filename}")
