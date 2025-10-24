@@ -101,13 +101,15 @@ docs:
 generate-boxes: generate-box-mesh-full generate-box-mesh-half
 generate-box-mesh-full:
     @uv run python examples/defraction_box.py --output-dir examples; exit 0
-
 generate-box-mesh-half:
     @uv run python examples/defraction_box.py --output-dir examples --grid-symmetry; exit 0
 
-# Run fleetmaster full example
+# Run fleetmaster examples
+fleetmaster: fleetmaster-full fleetmaster-half
 fleetmaster-full:
-    @fleetmaster -v run --settings-file examples/settings.yml
+    @fleetmaster -v run --settings-file examples/settings.yml; exit 0
+fleetmaster-half:
+    @fleetmaster -v run --settings-file examples/settings.yml; exit 0
 
 # ---------------------------------------
 # Help / menu

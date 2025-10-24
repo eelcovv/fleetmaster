@@ -1,4 +1,4 @@
-# Example configuration file for Fleetmaster
+#full Example configuration file for Fleetmaster
 #
 # This file defines a "scene" with multiple meshes.
 # - `base_mesh` is used to define the origin of the database (the center of mass of this mesh).
@@ -10,11 +10,14 @@
 #    The `translation` vector for these files is [0, 0, 0] because the geometry in the STL files themselves
 #    already has the correct positin. The engine will calculate and store the final transformation
 #    relative to the `base_mesh` origin.
- 
+
 # The base mesh is L x W x H = 3 x 2 x 3
-base_mesh: "defraction_box_half.stl" 
+base_mesh: "defraction_box_half.stl"
 # The origin in the local coordinate system of the base mesh
 base_origin: [0, 0.0, 1.5]
+
+output_hdf5_file: defraction_box_half.hdf5
+grid_symmetry: true
 
 stl_files:
   - file: "defraction_box_half_1m.stl"
