@@ -30,7 +30,7 @@ def main(grid_symmetry: bool, output_dir: Path):
 
     Args:
         grid_symmetry (bool): If True, enables grid symmetry, cutting the base mesh
-                              at the yz plane (port/starboard symmetry).
+                              at the xz plane (port/starboard symmetry).
         output_dir (Path): The directory where the generated STL files will be saved.
     """
     file_base = "defraction_box"
@@ -53,8 +53,8 @@ def main(grid_symmetry: bool, output_dir: Path):
     # create the base mesh for the wave interaction with x = 0 in the centre
     box_base = box_buoy.move(x=-half_length)
     if grid_symmetry:
-        print("Grid symmetry on: cutting mesh at yz plane")
-        box_base = box_base.cut_at_yz()
+        print("Grid symmetry on: cutting mesh at xz plane")
+        box_base = box_base.cut_at_xz()
     box_base_mesh = box_base.regrid(pct=REGRID_PERCENTAGE)
     print(f"Saving base mesh {box_base_filename}")
     box_base_mesh.save(str(box_base_filename))
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--grid-symmetry",
         action="store_true",
-        help="Enable grid symmetry (cuts the base mesh at the yz plane).",
+        help="Enable grid symmetry (cuts the base mesh at the xz plane).",
     )
     args = parser.parse_args()
     main(grid_symmetry=args.grid_symmetry, output_dir=args.output_dir)
