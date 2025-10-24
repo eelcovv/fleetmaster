@@ -17,6 +17,11 @@ install:
     @uv sync
     @uv run pre-commit install
 
+install-dev:
+    @echo "🚀 Creating virtual development environment using uv"
+    @uv sync --dev
+    @uv run pre-commit install
+
 # ---------------------------------------
 # Quality
 # ---------------------------------------
@@ -99,6 +104,10 @@ generate-box-mesh-full:
 
 generate-box-mesh-half:
     @uv run python examples/defraction_box.py --output-dir examples --grid-symmetry; exit 0
+
+# Run fleetmaster full example
+fleetmaster-full:
+    @fleetmaster -v run --settings-file examples/settings.yml
 
 # ---------------------------------------
 # Help / menu
