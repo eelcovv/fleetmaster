@@ -48,7 +48,7 @@ def main(grid_symmetry: bool, output_dir: Path):
     # create the buoy mesh with the stern at x = 0
     box_buoy = Box(0, BOX_LENGTH, -half_width, half_width, 0, BOX_HEIGHT)
     print(f"Saving buoy mesh {box_buoy_filename}")
-    box_buoy.save(box_buoy_filename)
+    box_buoy.save(str(box_buoy_filename))
 
     # create the base mesh for the wave interaction with x = 0 in the centre
     box_base = box_buoy.move(x=-half_length)
@@ -57,14 +57,14 @@ def main(grid_symmetry: bool, output_dir: Path):
         box_base = box_base.cut_at_yz()
     box_base_mesh = box_base.regrid(pct=REGRID_PERCENTAGE)
     print(f"Saving base mesh {box_base_filename}")
-    box_base_mesh.save(box_base_filename)
+    box_base_mesh.save(str(box_base_filename))
 
     for draft in DRAFTS:
         box_draft = box_base.move(z=-draft).cut_at_waterline()
         box_draft_mesh = box_draft.regrid(pct=REGRID_PERCENTAGE)
         box_draft_filename = output_dir / f"{file_base}_{draft}m.stl"
         print(f"Saving draft mesh {box_draft_filename}")
-        box_draft_mesh.save(box_draft_filename)
+        box_draft_mesh.save(str(box_draft_filename))
 
 
 if __name__ == "__main__":

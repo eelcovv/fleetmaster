@@ -92,6 +92,7 @@ docs:
 # ---------------------------------------
 # Examples
 # ---------------------------------------
+# Generate the example meshes. Requires pymeshup to be installed
 generate-box-meshes:
     @uv run python examples/defraction_box.py --output-dir examples
     @uv run python examples/defraction_box.py --output-dir examples --grid-symmetry
