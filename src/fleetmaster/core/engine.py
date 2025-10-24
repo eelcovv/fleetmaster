@@ -565,38 +565,42 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
     all_files = [mc.file for mc in all_mesh_configs]
 
     origin_translation = np.array([0.0, 0.0, 0.0])
-    base_mesh_path = settings.base_mesh
+    base_mesh_path: str | None = settings.base_mesh
     if not base_mesh_path and all_files:
         base_mesh_path = all_files[0]
 
     if base_mesh_path:
+        # Load the base mesh geometry once, as it might be needed for origin calculation or saving.
+        base_mesh_trimesh = _prepare_trimesh_geometry(base_mesh_path)
+        base_mesh_name = Path(base_mesh_path).stem
+
         if settings.base_origin:
             # If base_origin is specified, it's a point in the local coordinates of the base_mesh.
             # This point becomes the origin of our world coordinate system.
             origin_translation = np.array(settings.base_origin)
             logger.info(f"Using local point {origin_translation} from '{base_mesh_path}' as the world origin.")
         else:
-            # Fallback to using the center of mass if base_origin is not provided.
-            logger.info(f"Using center of mass of '{base_mesh_path}' to define the coordinate origin.")
-            base_mesh_for_origin = _prepare_trimesh_geometry(base_mesh_path)
-            origin_translation = base_mesh_for_origin.center_mass
+            origin_translation = base_mesh_trimesh.center_mass
             logger.info(f"Database origin (center of mass of base mesh) set to: {origin_translation}")
+
+        # Add the base mesh to the HDF5 database under the 'meshes' group.
+        add_mesh_to_database(output_file, base_mesh_trimesh, base_mesh_name, overwrite=settings.overwrite_meshes)
 
         # Store the base reference information in the root of the HDF5 file
         with h5py.File(output_file, "a") as f:
-            f.attrs["base_mesh"] = Path(base_mesh_path).name
+            f.attrs["base_mesh"] = base_mesh_name
             if settings.base_origin:
                 f.attrs["base_origin"] = settings.base_origin
             else:
                 f.attrs["base_origin"] = origin_translation  # Store the calculated CoM as origin
+    else:
+        logger.warning("No base mesh provided.")
 
     if settings.drafts and base_mesh_path:
         if len(all_files) != 1:
             msg = f"When using --drafts, exactly one base STL file must be provided, but {len(all_files)} were given."
             logger.error(msg)
             raise ValueError(msg)
-
-        logger.info(f"Starting draft generation mode for base mesh: {base_mesh_path}")
 
         base_mesh_name = Path(base_mesh_path).stem
         for draft in settings.drafts:
