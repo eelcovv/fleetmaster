@@ -106,7 +106,7 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
     return output_file
 
 
-def _prepare_trimesh_geometry(stl_file: str, mesh_config: MeshConfig) -> trimesh.Trimesh:
+def _prepare_trimesh_geometry(stl_file: str, mesh_config: MeshConfig | None = None) -> trimesh.Trimesh:
     """
     Loads an STL file and applies the specified translation and rotation.
 
@@ -119,6 +119,9 @@ def _prepare_trimesh_geometry(stl_file: str, mesh_config: MeshConfig) -> trimesh
     """
     transformed_mesh = trimesh.load_mesh(stl_file)
 
+    if mesh_config is None:
+        return transformed_mesh
+
     translation_vector = np.array(mesh_config.translation)
     rotation_vector_deg = np.array(mesh_config.rotation)
 
@@ -129,6 +132,12 @@ def _prepare_trimesh_geometry(stl_file: str, mesh_config: MeshConfig) -> trimesh
         return transformed_mesh
 
     # Start with an identity matrix (no transformation)
+    # The affine matrix is definets as:
+    # [ R R R T ]
+    # [ R R R T ]
+    # [ R R R T ]
+    # [ 0 0 0 S ]
+    # In our case the scaling factor S = 1 always.
     transform_matrix = np.identity(4)
 
     # 1. Apply rotation around the COG if specified
@@ -147,6 +156,7 @@ def _prepare_trimesh_geometry(stl_file: str, mesh_config: MeshConfig) -> trimesh
             rotation_vector_rad[0], rotation_vector_rad[1], rotation_vector_rad[2], "sxyz"
         )
         # The full rotation transform is: Translate to origin, Rotate, Translate back
+        # note that C = A @ B is identical to C = np.matmul(A, B)
         rotation_transform = (
             trimesh.transformations.translation_matrix(rotation_point)
             @ rotation_matrix
