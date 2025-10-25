@@ -128,28 +128,36 @@ def _prepare_trimesh_geometry(stl_file: str, mesh_config: MeshConfig) -> trimesh
     if not has_translation and not has_rotation:
         return transformed_mesh
 
-    # Determine the point of rotation
-    if mesh_config.cog:
-        rotation_point = np.array(mesh_config.cog)
-        logger.debug(f"Using specified COG {rotation_point} as rotation point.")
-    else:
-        rotation_point = transformed_mesh.center_mass
-        logger.debug(f"Using geometric center of mass {rotation_point} as rotation point.")
+    # Start with an identity matrix (no transformation)
+    transform_matrix = np.identity(4)
 
-    # Create the 4x4 transformation matrix
-    # 1. Start with rotation around the specified point
-    rotation_vector_rad = np.deg2rad(rotation_vector_deg)
-    transform_matrix = trimesh.transformations.euler_matrix(
-        rotation_vector_rad[0], rotation_vector_rad[1], rotation_vector_rad[2], "sxyz"
-    )
-    transform_matrix = (
-        trimesh.transformations.translation_matrix(rotation_point)
-        @ transform_matrix
-        @ trimesh.transformations.translation_matrix(-rotation_point)
-    )
+    # 1. Apply rotation around the COG if specified
+    if has_rotation:
+        # Determine the point of rotation
+        if mesh_config.cog:
+            rotation_point = np.array(mesh_config.cog)
+            logger.debug(f"Using specified COG {rotation_point} as rotation point.")
+        else:
+            rotation_point = transformed_mesh.center_mass
+            logger.debug(f"Using geometric center of mass {rotation_point} as rotation point.")
 
-    # 2. Add the final translation
-    transform_matrix = trimesh.transformations.translation_matrix(translation_vector) @ transform_matrix
+        # Create rotation matrix for rotation around the specified point
+        rotation_vector_rad = np.deg2rad(rotation_vector_deg)
+        rotation_matrix = trimesh.transformations.euler_matrix(
+            rotation_vector_rad[0], rotation_vector_rad[1], rotation_vector_rad[2], "sxyz"
+        )
+        # The full rotation transform is: Translate to origin, Rotate, Translate back
+        rotation_transform = (
+            trimesh.transformations.translation_matrix(rotation_point)
+            @ rotation_matrix
+            @ trimesh.transformations.translation_matrix(-rotation_point)
+        )
+        transform_matrix = rotation_transform @ transform_matrix
+
+    # 2. Apply the final translation if specified
+    if has_translation:
+        translation_matrix = trimesh.transformations.translation_matrix(translation_vector)
+        transform_matrix = translation_matrix @ transform_matrix
 
     logger.debug(f"Applying transformation matrix:\n{transform_matrix}")
     transformed_mesh.apply_transform(transform_matrix)
