@@ -15,6 +15,9 @@ class MeshConfig(BaseModel):
 
     file: str
     translation: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    rotation: list[float] = Field(
+        default_factory=lambda: [0.0, 0.0, 0.0], description="Rotation [roll, pitch, yaw] in degrees."
+    )
     cog: list[float] | None = Field(
         default=None, description="Center of Gravity [x,y,z] for this mesh, around which moments are calculated."
     )

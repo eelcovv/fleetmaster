@@ -106,26 +106,53 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
     return output_file
 
 
-def _prepare_trimesh_geometry(
-    stl_file: str,
-    translation_x: float = 0.0,
-    translation_y: float = 0.0,
-    translation_z: float = 0.0,
-) -> trimesh.Trimesh:
+def _prepare_trimesh_geometry(stl_file: str, mesh_config: MeshConfig) -> trimesh.Trimesh:
     """
-    Loads an STL file and applies specified translations.
+    Loads an STL file and applies the specified translation and rotation.
+
+    The rotation (roll, pitch, yaw) is performed around the center of gravity (cog)
+    if specified in the mesh_config. If no cog is specified, the mesh's geometric
+    center of mass is used as the rotation point.
 
     Returns:
         A trimesh.Trimesh object representing the transformed geometry.
     """
     transformed_mesh = trimesh.load_mesh(stl_file)
 
-    # Apply translation if specified
-    if translation_x != 0.0 or translation_y != 0.0 or translation_z != 0.0:
-        translation_vector = np.array([translation_x, translation_y, translation_z])
-        logger.debug(f"Applying mesh translation: {translation_vector}")
-        transform_matrix = trimesh.transformations.translation_matrix(translation_vector)
-        transformed_mesh.apply_transform(transform_matrix)
+    translation_vector = np.array(mesh_config.translation)
+    rotation_vector_deg = np.array(mesh_config.rotation)
+
+    has_translation = np.any(translation_vector != 0)
+    has_rotation = np.any(rotation_vector_deg != 0)
+
+    if not has_translation and not has_rotation:
+        return transformed_mesh
+
+    # Determine the point of rotation
+    if mesh_config.cog:
+        rotation_point = np.array(mesh_config.cog)
+        logger.debug(f"Using specified COG {rotation_point} as rotation point.")
+    else:
+        rotation_point = transformed_mesh.center_mass
+        logger.debug(f"Using geometric center of mass {rotation_point} as rotation point.")
+
+    # Create the 4x4 transformation matrix
+    # 1. Start with rotation around the specified point
+    rotation_vector_rad = np.deg2rad(rotation_vector_deg)
+    transform_matrix = trimesh.transformations.euler_matrix(
+        rotation_vector_rad[0], rotation_vector_rad[1], rotation_vector_rad[2], "sxyz"
+    )
+    transform_matrix = (
+        trimesh.transformations.translation_matrix(rotation_point)
+        @ transform_matrix
+        @ trimesh.transformations.translation_matrix(-rotation_point)
+    )
+
+    # 2. Add the final translation
+    transform_matrix = trimesh.transformations.translation_matrix(translation_vector) @ transform_matrix
+
+    logger.debug(f"Applying transformation matrix:\n{transform_matrix}")
+    transformed_mesh.apply_transform(transform_matrix)
 
     return transformed_mesh
 
@@ -324,12 +351,7 @@ def _process_single_stl(
                 raise FileNotFoundError(err_msg)
 
             # Load the base STL and apply the specified translation.
-            translated_mesh = _prepare_trimesh_geometry(
-                stl_file=str(source_file_path),
-                translation_x=mesh_config.translation[0],
-                translation_y=mesh_config.translation[1],
-                translation_z=mesh_config.translation[2],
-            )
+            translated_mesh = _prepare_trimesh_geometry(str(source_file_path), mesh_config)
             # Save the newly generated, translated mesh to a separate STL file for inspection.
             logger.info(f"Saving newly generated translated mesh to: {target_stl_path}")
             translated_mesh.export(target_stl_path)
@@ -390,6 +412,9 @@ def _run_pipeline_for_mesh(
     logger.info(fmt_str % ("Translation X", mesh_config.translation[0]))
     logger.info(fmt_str % ("Translation Y", mesh_config.translation[1]))
     logger.info(fmt_str % ("Translation Z", mesh_config.translation[2]))
+    logger.info(fmt_str % ("Rotation Roll [deg]", mesh_config.rotation[0]))
+    logger.info(fmt_str % ("Rotation Pitch [deg]", mesh_config.rotation[1]))
+    logger.info(fmt_str % ("Rotation Yaw [deg]", mesh_config.rotation[2]))
     logger.info(fmt_str % ("Forward speed(s) [m/s]", forwards_speeds))
 
     process_all_cases_for_one_stl(
