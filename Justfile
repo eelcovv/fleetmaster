@@ -98,18 +98,23 @@ docs:
 # Examples
 # ---------------------------------------
 # Generate the example meshes. Requires pymeshup to be installed
-generate-boxes: generate-box-mesh-full generate-box-mesh-half
+generate-all: generate-box-mesh-full generate-box-mesh-half generate-ship-rotation
+
 generate-box-mesh-full:
-    @uv run python examples/defraction_box.py --output-dir examples; exit 0
+    @uv run python examples/defraction_box.py --output-dir examples --file-base defraction_box_full; exit 0
 generate-box-mesh-half:
-    @uv run python examples/defraction_box.py --output-dir examples --grid-symmetry; exit 0
+    @uv run python examples/defraction_box.py --output-dir examples --file-base defraction_box_half --grid-symmetry; exit 0
+generate-ship-rotation:
+    @uv run python examples/defraction_box.py --output-dir examples --file-base boxship --only-base; exit 0
 
 # Run fleetmaster examples
-fleetmaster: fleetmaster-full fleetmaster-half
+fleetmaster-all: fleetmaster-full fleetmaster-half
 fleetmaster-full: generate-box-mesh-full
     @fleetmaster -v run --settings-file examples/settings_full.yml; exit 0
 fleetmaster-half: generate-box-mesh-half
     @fleetmaster -v run --settings-file examples/settings_half.yml; exit 0
+fleetmaster-rotation: generate-ship-rotation
+    @fleetmaster -v run --settings-file examples/settings_rotations.yml; exit 0
 
 # clean examples directory
 clean-examples: clean-examples-stl clean-examples-hdf5

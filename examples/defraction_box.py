@@ -25,7 +25,7 @@ REGRID_PERCENTAGE = 3
 FILE_BASE = "defraction_box"
 
 
-def main(grid_symmetry: bool, output_dir: Path):
+def main(grid_symmetry: bool, output_dir: Path, file_base: str, only_base: bool = False):
     """
     Generates STL meshes for a defraction box based on specified parameters.
 
@@ -33,12 +33,12 @@ def main(grid_symmetry: bool, output_dir: Path):
         grid_symmetry (bool): If True, enables grid symmetry, cutting the base mesh
                               at the xz plane (port/starboard symmetry).
         output_dir (Path): The directory where the generated STL files will be saved.
+        file_base (str): The base name for the generated STL files.
+        only_base (bool): If True, only the base mesh will be generated.
     """
     if grid_symmetry:
-        file_base = FILE_BASE + "_half"
         print(f"Grid symmetry on with file base {file_base}")
     else:
-        file_base = FILE_BASE + "_full"
         print(f"Grid symmetry off with file base {file_base}")
 
     output_dir.mkdir(exist_ok=True)
@@ -63,6 +63,9 @@ def main(grid_symmetry: bool, output_dir: Path):
     print(f"Saving base mesh {box_base_filename}")
     box_base_mesh.save(str(box_base_filename))
 
+    if only_base:
+        return
+
     for draft in DRAFTS:
         box_draft = box_base.move(z=-draft).cut_at_waterline()
         box_draft_mesh = box_draft.regrid(pct=REGRID_PERCENTAGE)
@@ -82,10 +85,18 @@ if __name__ == "__main__":
         default=Path("."),
         help="The directory to save the generated STL files.",
     )
+    parser.add_argument("-f", "--file-base", type=str, default=FILE_BASE, help="The file base name for the STL files.")
     parser.add_argument(
         "--grid-symmetry",
         action="store_true",
         help="Enable grid symmetry (cuts the base mesh at the xz plane).",
     )
+    parser.add_argument(
+        "--only-base",
+        action="store_true",
+        help="Only generate the base mesh.",
+    )
     args = parser.parse_args()
-    main(grid_symmetry=args.grid_symmetry, output_dir=args.output_dir)
+    main(
+        grid_symmetry=args.grid_symmetry, output_dir=args.output_dir, file_base=args.file_base, only_base=args.only_base
+    )
