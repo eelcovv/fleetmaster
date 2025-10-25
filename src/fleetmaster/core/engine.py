@@ -228,8 +228,10 @@ def _prepare_capytaine_body(
         hull_mesh = cpt.ReflectionSymmetricMesh(hull_mesh, plane=cpt.xOz_Plane)
 
     boat = cpt.FloatingBody(mesh=hull_mesh, lid_mesh=lid_mesh, center_of_mass=cog)
-    boat.add_all_rigid_body_dofs()
     boat.keep_immersed_part()
+
+    # important: do this step after keep_immersed_part in order to keep the body constent with the cut mesh
+    boat.add_all_rigid_body_dofs()
 
     # 5. Extract the final mesh that Capytaine will use for the database. After keep_immersed_part,
     # boat.mesh contains the correct vertices and faces for both regular and symmetric meshes.
@@ -337,15 +339,17 @@ def _process_single_stl(
     final_mesh_to_process: trimesh.Trimesh | None = None
 
     # --- Workflow to determine the mesh to process ---
-    # 1. Prioritize loading from the HDF5 database if it already exists.
-    try:
-        existing_meshes = load_meshes_from_hdf5(output_file, [mesh_name])
-        if existing_meshes:
-            final_mesh_to_process = existing_meshes[0]
-            logger.info(f"Found existing mesh '{mesh_name}' in the database. Using it directly.")
-    except FileNotFoundError:
-        # The HDF5 file doesn't exist yet, so no meshes can exist. This is expected on the first run.
-        pass
+    if not settings.overwrite_meshes:
+        # 1. Prioritize loading from the HDF5 database if it already exists, only if we dont want
+        # to overwrite the meshes
+        try:
+            existing_meshes = load_meshes_from_hdf5(output_file, [mesh_name])
+            if existing_meshes:
+                final_mesh_to_process = existing_meshes[0]
+                logger.info(f"Found existing mesh '{mesh_name}' in the database. Using it directly.")
+        except FileNotFoundError:
+            # The HDF5 file doesn't exist yet, so no meshes can exist. This is expected on the first run.
+            pass
 
     # 2. If not in DB, check if a pre-translated STL file exists.
     if final_mesh_to_process is None:
@@ -417,6 +421,7 @@ def _run_pipeline_for_mesh(
 
     fmt_str = "%-40s: %s"
     logger.info(fmt_str % ("Base STL file", mesh_config.file))
+    logger.info(fmt_str % ("Base STL vertices", source_mesh.vertices.shape))
     logger.info(fmt_str % ("Output file", output_file))
     logger.info(fmt_str % ("Grid symmetry", grid_symmetry))
     logger.info(fmt_str % ("Use lid", lid))
