@@ -67,7 +67,8 @@ def main(grid_symmetry: bool, output_dir: Path, file_base: str, only_base: bool 
         return
 
     for draft in DRAFTS:
-        box_draft = box_base.move(z=-draft).cut_at_waterline()
+        box_draft = box_base.move(z=-draft)
+        box_draft = box_draft.cut_at_waterline()
         box_draft_mesh = box_draft.regrid(pct=REGRID_PERCENTAGE)
         box_draft_filename = output_dir / f"{file_base}_{draft}m.stl"
         print(f"Saving draft mesh {box_draft_filename}")

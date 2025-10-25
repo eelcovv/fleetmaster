@@ -415,8 +415,6 @@ def _run_pipeline_for_mesh(
     lid = settings.lid
     grid_symmetry = settings.grid_symmetry
 
-    output_file = output_file
-
     fmt_str = "%-40s: %s"
     logger.info(fmt_str % ("Base STL file", mesh_config.file))
     logger.info(fmt_str % ("Output file", output_file))

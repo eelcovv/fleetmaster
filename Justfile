@@ -110,7 +110,7 @@ generate-ship-rotation:
 # Run fleetmaster examples
 fleetmaster-all: fleetmaster-full fleetmaster-half
 fleetmaster-full: generate-box-mesh-full
-    @fleetmaster -v run --settings-file examples/settings_full.yml; exit 0
+    @fleetmaster -v run --settings-file examples/settings_full.yml --lid; exit 0
 fleetmaster-half: generate-box-mesh-half
     @fleetmaster -v run --settings-file examples/settings_half.yml; exit 0
 fleetmaster-rotation: generate-ship-rotation
