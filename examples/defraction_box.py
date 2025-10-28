@@ -103,7 +103,18 @@ def generate_fitting_stl_files(output_dir: Path, file_base: str):
         return
 
     print(f"\n--- Generating fitting example STL files based on '{base_stl_path.name}' ---")
-    base_mesh_untransformed = trimesh.load(base_stl_path)
+    loaded_mesh = trimesh.load(base_stl_path)
+
+    # trimesh.load can return a Scene object or None. We need a single Trimesh object.
+    if isinstance(loaded_mesh, trimesh.Scene):
+        # Combine all geometries in the scene into a single mesh
+        base_mesh_untransformed = loaded_mesh.dump(concatenate=True)
+    else:
+        base_mesh_untransformed = loaded_mesh
+
+    if not isinstance(base_mesh_untransformed, trimesh.Trimesh) or base_mesh_untransformed.is_empty:
+        print(f"Error: Failed to load a valid mesh from '{base_stl_path}'. Aborting fitting mesh generation.")
+        return
 
     # The `translation` in the original settings_rotations.yml is the desired position of the mesh's geometric center
     # relative to the database origin. We bake this transformation directly into the STL.
