@@ -77,7 +77,8 @@ def main(
         return
 
     for draft in DRAFTS:
-        box_draft = box_base.move(z=-draft)
+        # Start from the original buoy and move it, similar to how box_base was created.
+        box_draft = box_buoy.move(x=-half_length, z=-draft)
         box_draft = box_draft.cut_at_waterline()
         box_draft_mesh = box_draft.regrid(pct=REGRID_PERCENTAGE)
         box_draft_filename = output_dir / f"{file_base}_{draft}m.stl"
@@ -118,9 +119,7 @@ def generate_fitting_stl_files(output_dir: Path, file_base: str):
         # The absolute translation is the target position relative to the database origin.
         translation_vec = [0.0, 0.0, target_z_rel_db_origin]
 
-        transform_matrix = compose_matrix(
-            angles=np.radians([roll_deg, pitch_deg, yaw_deg]), translation=translation_vec
-        )
+        transform_matrix = compose_matrix(angles=np.radians([roll_deg, pitch_deg, yaw_deg]), translate=translation_vec)
 
         transformed_mesh = base_mesh_untransformed.copy()
         transformed_mesh.apply_transform(transform_matrix)
