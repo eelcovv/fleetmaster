@@ -372,6 +372,10 @@ def add_mesh_to_database(
     Args:
         mesh_to_add: The trimesh object of the mesh to be added.
     """
+    if not isinstance(mesh_to_add, trimesh.Trimesh) or mesh_to_add.is_empty:
+        logger.warning(f"Attempted to add an empty or invalid mesh named '{mesh_name}' to the database. Skipping.")
+        return
+
     mesh_group_path = f"{MESH_GROUP_NAME}/{mesh_name}"
     new_stl_content, new_hash = _get_mesh_hash(mesh_to_add)
 
