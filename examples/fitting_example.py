@@ -63,14 +63,13 @@ def run_fitting_example():
     # The water level used for the comparison. This should match the level at which
     # the meshes in the database were generated (wetted surface).
     water_level = 0.0
-    draft = 2.0
 
     # --- Test Case 1: A transformation that should perfectly match an existing mesh ---
     _run_and_print_test_case(
         case_number=1,
-        description="Exact Match",
+        description="Exact Match Draft 1 meter",
         hdf5_path=hdf5_path,
-        target_translation=[0.0, 0.0, -draft],
+        target_translation=[0.0, 0.0, -1.0],
         target_rotation=[20.0, 20.0, 0.0],
         water_level=water_level,
         expected_match="boxship_t_1_r_20_20_00",
@@ -79,25 +78,61 @@ def run_fitting_example():
     # --- Test Case 2: A transformation with irrelevant translations and rotations ---
     _run_and_print_test_case(
         case_number=2,
-        description="Match with Noise",
+        description="Match with Noise draft 1.0",
         hdf5_path=hdf5_path,
-        target_translation=[2.5, -4.2, -draft],  # Added dx, dy
+        target_translation=[2.5, -4.2, -1.1],  # Added dx, dy and dz
         target_rotation=[20.0, 20.0, 15.0],  # Added yaw
         water_level=water_level,
         expected_match="boxship_t_1_r_20_20_00",
         note="The distance should be very close to the distance in Case 1.",
     )
 
-    # --- Test Case 3: A transformation with different core properties ---
+    # --- Test Case 2: A transformation with irrelevant translations and rotations ---
     _run_and_print_test_case(
         case_number=3,
-        description="Different Match with Noise",
+        description="Different Match with Noise draft 1.0",
         hdf5_path=hdf5_path,
-        target_translation=[2.5, -4.2, -draft * 1.2],  # Added dx, dy AND dz
+        target_translation=[2.5, -4.2, -1.1],  # Added dx, dy AND dz
         target_rotation=[23.0, 19.0, 15.0],  # Added yaw AND roll and pitch
         water_level=water_level,
-        expected_match="boxship_t_2_r_00_00_00",
+        expected_match="boxship_t_1_r_00_00_00",
         note="The distance should be larger than both case 1 and case 2.",
+    )
+
+    # --- Test Case 4: A transformation with different core properties ---
+    _run_and_print_test_case(
+        case_number=4,
+        description="Exact Match for draft 2.0",
+        hdf5_path=hdf5_path,
+        target_translation=[0.0, -0.0, -2],
+        target_rotation=[0.0, 0.0, 0.0],
+        water_level=water_level,
+        expected_match="boxship_t_2_r_00_00_00",
+        note="The distance should be zero.",
+    )
+
+    # --- Test Case 5: A transformation with different core properties ---
+    _run_and_print_test_case(
+        case_number=5,
+        description="Exact Match for draft 2.0 with deviation in xy plane and yaw",
+        hdf5_path=hdf5_path,
+        target_translation=[10.0, -20.0, -2],
+        target_rotation=[0.0, 0.0, 15.0],
+        water_level=water_level,
+        expected_match="boxship_t_2_r_00_00_00",
+        note="The distance should be zero.",
+    )
+
+    # --- Test Case 6: A transformation with different core properties ---
+    _run_and_print_test_case(
+        case_number=6,
+        description="Match for draft 2.0 with noise",
+        hdf5_path=hdf5_path,
+        target_translation=[10.0, -20.0, -2.2],
+        target_rotation=[4.0, -1.0, 15.0],
+        water_level=water_level,
+        expected_match="boxship_t_2_r_00_00_00",
+        note="The distance should be larger than zero.",
     )
 
 
