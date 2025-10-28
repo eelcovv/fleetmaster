@@ -14,7 +14,10 @@ Requires the package pymeshup to be installed.
 import argparse
 from pathlib import Path
 
+import numpy as np
+import trimesh
 from pymeshup import Box
+from trimesh.transformations import compose_matrix
 
 # Constants for the box dimensions
 BOX_LENGTH = 10
@@ -25,7 +28,13 @@ REGRID_PERCENTAGE = 3
 FILE_BASE = "defraction_box"
 
 
-def main(grid_symmetry: bool, output_dir: Path, file_base: str, only_base: bool = False):
+def main(
+    grid_symmetry: bool,
+    output_dir: Path,
+    file_base: str,
+    only_base: bool = False,
+    generate_fitting_meshes: bool = False,
+):
     """
     Generates STL meshes for a defraction box based on specified parameters.
 
@@ -35,6 +44,7 @@ def main(grid_symmetry: bool, output_dir: Path, file_base: str, only_base: bool 
         output_dir (Path): The directory where the generated STL files will be saved.
         file_base (str): The base name for the generated STL files.
         only_base (bool): If True, only the base mesh will be generated.
+        generate_fitting_meshes (bool): If True, generates specific STL files for the fitting example.
     """
     if grid_symmetry:
         print(f"Grid symmetry on with file base {file_base}")
@@ -74,6 +84,51 @@ def main(grid_symmetry: bool, output_dir: Path, file_base: str, only_base: bool 
         print(f"Saving draft mesh {box_draft_filename}")
         box_draft_mesh.save(str(box_draft_filename))
 
+    if generate_fitting_meshes:
+        generate_fitting_stl_files(output_dir, file_base)
+
+
+def generate_fitting_stl_files(output_dir: Path, file_base: str):
+    """
+    Generates specific rotated and translated STL meshes required by settings_rotations.yml
+    for the fitting example. These meshes are based on the full 'boxship.stl' and then transformed.
+    """
+    base_stl_path = output_dir / f"{file_base}.stl"
+    if not base_stl_path.exists():
+        print(
+            f"Error: Base mesh '{base_stl_path}' not found. "
+            "Please ensure it's generated first (e.g., by running with --only-base)."
+        )
+        return
+
+    print(f"\n--- Generating fitting example STL files based on '{base_stl_path.name}' ---")
+    base_mesh_untransformed = trimesh.load(base_stl_path)
+
+    # The `translation` in the original settings_rotations.yml is the desired position of the mesh's geometric center
+    # relative to the database origin. We bake this transformation directly into the STL.
+    fitting_cases = [
+        ("boxship_t_1_r_00_00_00.stl", -1.0, 0.0, 0.0, 0.0),
+        ("boxship_t_2_r_00_00_00.stl", -2.0, 0.0, 0.0, 0.0),
+        ("boxship_t_1_r_45_00_00.stl", -1.0, 45.0, 0.0, 0.0),
+        ("boxship_t_1_r_00_10_00.stl", -1.0, 0.0, 10.0, 0.0),
+        ("boxship_t_1_r_20_20_00.stl", -1.0, 20.0, 20.0, 0.0),
+    ]
+
+    for filename, target_z_rel_db_origin, roll_deg, pitch_deg, yaw_deg in fitting_cases:
+        # The absolute translation is the target position relative to the database origin.
+        translation_vec = [0.0, 0.0, target_z_rel_db_origin]
+
+        transform_matrix = compose_matrix(
+            angles=np.radians([roll_deg, pitch_deg, yaw_deg]), translation=translation_vec
+        )
+
+        transformed_mesh = base_mesh_untransformed.copy()
+        transformed_mesh.apply_transform(transform_matrix)
+
+        output_path = output_dir / filename
+        transformed_mesh.export(str(output_path))
+        print(f"Generated: {output_path.name}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -97,7 +152,16 @@ if __name__ == "__main__":
         action="store_true",
         help="Only generate the base mesh.",
     )
+    parser.add_argument(
+        "--generate-fitting-meshes",
+        action="store_true",
+        help="Generate specific STL files for the fitting example based on settings_rotations.yml.",
+    )
     args = parser.parse_args()
     main(
-        grid_symmetry=args.grid_symmetry, output_dir=args.output_dir, file_base=args.file_base, only_base=args.only_base
+        grid_symmetry=args.grid_symmetry,
+        output_dir=args.output_dir,
+        file_base=args.file_base,
+        only_base=args.only_base,
+        generate_fitting_meshes=args.generate_fitting_meshes,
     )
