@@ -157,14 +157,8 @@ def _apply_mesh_translation_and_rotation(
     cog: npt.NDArray[np.float64] | list | None = None,
 ) -> trimesh.Trimesh:
     """Apply a translation and rotation to a mesh object."""
-    if translation_vector is not None and isinstance(translation_vector, list):
-        translation_vector = np.array(translation_vector)
-    else:
-        translation_vector = np.zeros(3)
-    if rotation_vector_deg is not None and isinstance(rotation_vector_deg, list):
-        rotation_vector_deg = np.array(rotation_vector_deg)
-    else:
-        rotation_vector_deg = np.zeros(3)
+    translation_vector = np.asarray(translation_vector) if translation_vector is not None else np.zeros(3)
+    rotation_vector_deg = np.asarray(rotation_vector_deg) if rotation_vector_deg is not None else np.zeros(3)
 
     has_translation = np.any(translation_vector != 0)
     has_rotation = np.any(rotation_vector_deg != 0)
@@ -173,7 +167,7 @@ def _apply_mesh_translation_and_rotation(
         return mesh
 
     # Start with an identity matrix (no transformation)
-    # The affine matrix is definets as:
+    # The affine matrix is defined as:
     # [ R R R T ]
     # [ R R R T ]
     # [ R R R T ]
@@ -185,8 +179,7 @@ def _apply_mesh_translation_and_rotation(
     if has_rotation:
         # Determine the point of rotation
         if cog is not None:
-            if isinstance(cog, list):
-                rotation_point = np.array(cog)
+            rotation_point = np.asarray(cog)
             logger.debug(f"Using specified COG {rotation_point} as rotation point.")
         else:
             rotation_point = mesh.center_mass
@@ -268,6 +261,10 @@ def _prepare_capytaine_body(
 
     boat = cpt.FloatingBody(mesh=hull_mesh, lid_mesh=lid_mesh, center_of_mass=cog)
     boat.keep_immersed_part(free_surface=water_level)
+
+    # Check for empty mesh after keep_immersed_part
+    if boat.mesh.vertices.size == 0 or boat.mesh.faces.size == 0:
+        logger.warning("Resulting mesh is empty after keep_immersed_part. Check if water_level is above the mesh.")
 
     # Important: do this step after keep_immersed_part in order to keep the body constent with the cut mesh
     boat.add_all_rigid_body_dofs()
