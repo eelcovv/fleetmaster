@@ -247,6 +247,15 @@ def test_run_simulation_batch_standard(mock_setup, mock_process, mock_prepare, m
 
     mock_mesh = MagicMock(spec=trimesh.Trimesh)
     mock_mesh.export.return_value = b"dummy stl content"
+
+    # --- FIX HIER TOEGEVOEGD ---
+    # Configureer de mock om waarden terug te geven die de productiecode verwacht
+    mock_mesh.moment_inertia = np.eye(3)
+    mock_mesh.volume = 1.0  # Dit voorkomt de TypeError: MagicMock > float
+    mock_mesh.center_mass = [0, 0, 0]
+    mock_mesh.bounding_box.extents = [1, 1, 1]
+    # --- EINDE FIX ---
+
     mock_prepare.return_value = mock_mesh
 
     run_simulation_batch(mock_settings)
@@ -263,6 +272,15 @@ def test_run_simulation_batch_drafts(mock_setup, mock_process, mock_prepare, moc
     mock_setup.return_value = tmp_path / "output.hdf5"
     mock_mesh = MagicMock(spec=trimesh.Trimesh)
     mock_mesh.export.return_value = b"dummy stl content"
+
+    # --- FIX HIER TOEGEVOEGD ---
+    # Configureer de mock om waarden terug te geven die de productiecode verwacht
+    mock_mesh.moment_inertia = np.eye(3)
+    mock_mesh.volume = 1.0  # Dit voorkomt de TypeError: MagicMock > float
+    mock_mesh.center_mass = [0, 0, 0]
+    mock_mesh.bounding_box.extents = [1, 1, 1]
+    # --- EINDE FIX ---
+
     mock_prepare.return_value = mock_mesh
 
     mock_settings.stl_files = [MeshConfig(file="base_mesh.stl", translation=[0, 0, 5])]
