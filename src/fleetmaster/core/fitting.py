@@ -94,9 +94,19 @@ def _find_best_fit_for_candidates(
             distances[name] = np.inf
             continue
 
-        # Combine transformations:
-        # - XY translation from candidate, Z translation from target.
-        # - XY rotation (roll, pitch) from target, Z rotation (yaw) from candidate.
+        # The goal of the fitting is to find a mesh from the database that best matches
+        # the target's submerged shape, which is primarily determined by Z-translation (draft)
+        # and X/Y-rotations (roll, pitch). The database contains meshes with varying roll and pitch,
+        # but typically constant XY translation and Z-rotation (yaw).
+        #
+        # To find the best match, we create a hybrid transformation that respects these assumptions:
+        # - We use the target's Z-translation (draft) because that's a key property we're matching.
+        # - We use the target's roll and pitch for the same reason.
+        # - We take the candidate's XY-translation and yaw, because these are considered irrelevant
+        #   for the shape matching and are constant in the database generation process.
+        #
+        # This allows us to transform the base mesh into a shape that is directly comparable
+        # with the candidate's wetted surface.
         new_translation = [
             candidate_translation[0],
             candidate_translation[1],

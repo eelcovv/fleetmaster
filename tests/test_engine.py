@@ -66,6 +66,23 @@ def test_setup_output_file_no_overwrite(tmp_path, mock_settings):
     assert output_file.exists()  # Should NOT have been deleted
 
 
+def test_setup_output_file_with_dict_as_stl(tmp_path):
+    """Test _setup_output_file with stl_files as a list of dicts."""
+    settings = MagicMock(spec=SimulationSettings)
+    settings.stl_files = [{"file": str(tmp_path / "test.stl")}]
+    settings.output_directory = None
+    settings.output_hdf5_file = "results.hdf5"
+    settings.overwrite_meshes = False
+
+    # Act
+    result_path = _setup_output_file(settings)
+
+    # Assert
+    # If no output dir is specified, it should be the parent of the first STL
+    assert result_path == tmp_path / "results.hdf5"
+    assert result_path.parent.exists()
+
+
 @patch("fleetmaster.core.engine.cpt")
 @patch("fleetmaster.core.engine.tempfile")
 def test_prepare_capytaine_body(mock_tempfile, mock_cpt, tmp_path: Path):
@@ -230,6 +247,15 @@ def test_run_simulation_batch_standard(mock_setup, mock_process, mock_prepare, m
 
     mock_mesh = MagicMock(spec=trimesh.Trimesh)
     mock_mesh.export.return_value = b"dummy stl content"
+
+    # --- FIX HIER TOEGEVOEGD ---
+    # Configureer de mock om waarden terug te geven die de productiecode verwacht
+    mock_mesh.moment_inertia = np.eye(3)
+    mock_mesh.volume = 1.0  # Dit voorkomt de TypeError: MagicMock > float
+    mock_mesh.center_mass = [0, 0, 0]
+    mock_mesh.bounding_box.extents = [1, 1, 1]
+    # --- EINDE FIX ---
+
     mock_prepare.return_value = mock_mesh
 
     run_simulation_batch(mock_settings)
@@ -246,6 +272,15 @@ def test_run_simulation_batch_drafts(mock_setup, mock_process, mock_prepare, moc
     mock_setup.return_value = tmp_path / "output.hdf5"
     mock_mesh = MagicMock(spec=trimesh.Trimesh)
     mock_mesh.export.return_value = b"dummy stl content"
+
+    # --- FIX HIER TOEGEVOEGD ---
+    # Configureer de mock om waarden terug te geven die de productiecode verwacht
+    mock_mesh.moment_inertia = np.eye(3)
+    mock_mesh.volume = 1.0  # Dit voorkomt de TypeError: MagicMock > float
+    mock_mesh.center_mass = [0, 0, 0]
+    mock_mesh.bounding_box.extents = [1, 1, 1]
+    # --- EINDE FIX ---
+
     mock_prepare.return_value = mock_mesh
 
     mock_settings.stl_files = [MeshConfig(file="base_mesh.stl", translation=[0, 0, 5])]
@@ -281,3 +316,185 @@ def test_run_simulation_batch_drafts_wrong_stl_count(mock_prepare, mock_settings
     mock_settings.stl_files = [MeshConfig(file="file1.stl"), MeshConfig(file="file2.stl")]
     with pytest.raises(ValueError, match="exactly one base STL file must be provided"):
         run_simulation_batch(mock_settings)
+
+
+@patch("h5py.File")
+def test_add_mesh_to_database_overwrite_true_different_content(mock_h5py_file, caplog):
+    """Test that with overwrite=True, a different mesh with the same name is replaced."""
+    # Arrange
+    mock_file = MagicMock()
+    mock_h5py_file.return_value.__enter__.return_value = mock_file
+
+    mock_group = MagicMock()
+    mock_group.name = "/meshes/test_mesh"
+    mock_file.__contains__.return_value = True
+    mock_file.__getitem__.return_value = mock_group
+    mock_group.attrs.get.return_value = "old_hash"
+
+    output_file = Path("dummy.h5")
+    mesh_config = MeshConfig(file="test.stl", name="test_mesh")
+    new_mesh = trimesh.creation.box()
+
+    # Act
+    add_mesh_to_database(output_file, new_mesh, "test_mesh", overwrite=True, mesh_config=mesh_config)
+
+    # Assert
+    mock_file.__delitem__.assert_called_once_with("meshes/test_mesh")
+    assert "Overwriting existing mesh" in caplog.text
+    mock_file.create_group.assert_called_with("meshes/test_mesh")
+
+
+@patch("fleetmaster.core.engine._process_single_stl")
+@patch("fleetmaster.core.engine._setup_output_file")
+def test_run_simulation_batch_with_mesh_config_dict(mock_setup, mock_process, tmp_path):
+    """Test run_simulation_batch with stl_files as a list of dicts."""
+    settings_dict = {
+        "stl_files": [{"file": "box.stl", "translation": [1, 2, 3]}],
+        "output_directory": str(tmp_path),
+        "output_hdf5_file": "results.h5",
+        "overwrite_meshes": True,
+        "drafts": [],
+        "base_mesh": None,
+        "base_origin": None,
+        "wave_periods": [10.0],
+        "wave_directions": [0.0],
+        "water_depth": 100.0,
+        "water_level": 0.0,
+        "forward_speed": 0.0,
+        "grid_symmetry": False,
+        "lid": False,
+        "add_center_of_mass": False,
+        "update_cases": False,
+        "combine_cases": False,
+    }
+
+    stl_file = tmp_path / "box.stl"
+    stl_file.touch()
+    settings_dict["stl_files"][0]["file"] = str(stl_file)
+    mock_setup.return_value = tmp_path / "results.h5"
+
+    settings = SimulationSettings(**settings_dict)
+
+    run_simulation_batch(settings)
+
+    mock_process.assert_called_once()
+    called_mesh_config = mock_process.call_args[0][0]
+    assert isinstance(called_mesh_config, MeshConfig)
+    assert called_mesh_config.file == str(stl_file)
+    assert called_mesh_config.translation == [1, 2, 3]
+
+
+@patch("fleetmaster.core.engine._process_single_stl")
+@patch("h5py.File")
+@patch("fleetmaster.core.engine._setup_output_file")
+@patch("fleetmaster.core.engine._prepare_trimesh_geometry")
+def test_run_simulation_batch_with_base_origin(mock_prepare, mock_setup, mock_h5py, mock_process_stl, tmp_path):
+    """Test run_simulation_batch with base_origin set."""
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    stl_path = tmp_path / "test.stl"
+    stl_path.touch()
+    mock_setup.return_value = output_dir / "results.h5"
+
+    mock_prepare.return_value = trimesh.creation.box()
+
+    settings = SimulationSettings(
+        stl_files=[{"file": str(stl_path)}],
+        base_mesh=str(stl_path),
+        base_origin=[1.0, 2.0, 3.0],
+        output_directory=str(output_dir),
+        wave_periods=[10.0],
+        wave_directions=[0.0],
+        water_depth=100.0,
+        water_level=0.0,
+        forward_speed=0.0,
+        grid_symmetry=False,
+        lid=False,
+        add_center_of_mass=False,
+        update_cases=False,
+        combine_cases=False,
+    )
+
+    mock_file = MagicMock()
+    mock_h5py.return_value.__enter__.return_value = mock_file
+
+    run_simulation_batch(settings)
+
+    # Check that origin_translation is passed correctly
+    mock_process_stl.assert_called_once()
+    kwargs = mock_process_stl.call_args.kwargs
+    assert "origin_translation" in kwargs
+    np.testing.assert_array_equal(kwargs["origin_translation"], np.array([1.0, 2.0, 3.0]))
+
+    # Check that base_origin is saved to HDF5 file attributes
+    mock_file.attrs.__setitem__.assert_any_call("base_origin", [1.0, 2.0, 3.0])
+
+
+@patch("h5py.File")
+def test_add_mesh_to_database_with_meshconfig_attrs(mock_h5py_file, tmp_path):
+    """Test that MeshConfig attributes are saved to the HDF5 group."""
+    # Arrange
+    mock_file = MagicMock()
+    mock_group = MagicMock()
+    mock_h5py_file.return_value.__enter__.return_value = mock_file
+    mock_file.create_group.return_value = mock_group
+
+    output_file = tmp_path / "db.h5"
+    mesh_config = MeshConfig(
+        file="test.stl",
+        name="test_mesh",
+        translation=[1, 1, 1],
+        rotation=[2, 2, 2],
+        cog=[3, 3, 3],
+    )
+    mock_mesh = MagicMock(spec=trimesh.Trimesh)
+    mock_mesh.export.return_value = b"content"
+    mock_mesh.moment_inertia = np.eye(3)
+    mock_mesh.volume = 1.0
+    mock_mesh.center_mass = [0, 0, 0]
+    mock_mesh.bounding_box.extents = [1, 1, 1]
+    mock_mesh.is_empty = False  # Ensure the mock mesh is not considered empty
+
+    # Act
+    add_mesh_to_database(output_file, mock_mesh, "test_mesh", mesh_config=mesh_config)
+
+    # Assert
+    mock_file.create_group.assert_called_once_with("meshes/test_mesh")
+    mock_group.attrs.__setitem__.assert_any_call("translation", [1, 1, 1])
+    mock_group.attrs.__setitem__.assert_any_call("rotation", [2, 2, 2])
+    mock_group.attrs.__setitem__.assert_any_call("cog", [3, 3, 3])
+
+
+@patch("fleetmaster.core.engine._load_or_generate_mesh")
+@patch("fleetmaster.core.engine.load_meshes_from_hdf5")
+@patch("fleetmaster.core.engine._run_pipeline_for_mesh")
+def test_process_single_stl_from_db(mock_run_pipeline, mock_load_meshes, mock_load_or_generate, tmp_path):
+    """Test _process_single_stl when the mesh is loaded from the database."""
+    # Arrange
+    settings = MagicMock(spec=SimulationSettings)
+    settings.overwrite_meshes = False
+
+    # The name of the mesh is derived from the file name stem
+    mesh_config = MeshConfig(file="dummy_name.stl")
+    output_file = tmp_path / "db.h5"
+
+    mock_mesh_from_db = MagicMock(spec=trimesh.Trimesh)
+    mock_load_meshes.return_value = [mock_mesh_from_db]
+
+    # Act
+    _process_single_stl(mesh_config, settings, output_file)
+
+    # Assert
+    # Should attempt to load from DB first
+    mock_load_meshes.assert_called_once_with(output_file, ["dummy_name"])
+
+    # Should NOT try to load or generate a new mesh because it was found in the DB
+    mock_load_or_generate.assert_not_called()
+
+    # Should run the pipeline with the mesh from the DB
+    mock_run_pipeline.assert_called_once()
+    engine_mesh_arg = mock_run_pipeline.call_args[0][0]
+    assert isinstance(engine_mesh_arg, EngineMesh)
+    assert engine_mesh_arg.mesh == mock_mesh_from_db
+    assert engine_mesh_arg.name == "dummy_name"
+    assert engine_mesh_arg.config == mesh_config

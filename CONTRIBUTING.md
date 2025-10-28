@@ -65,8 +65,10 @@ Please note this documentation assumes you already have `uv` and `Git` installed
    Then, install and activate the environment with:
 
    ```bash
-   uv sync
+   uv sync --all-extras
    ```
+
+   Using `--all-extras` ensures that all optional dependencies, including those for generating test data (`pymeshup`), are installed.
 
 4. Install pre-commit to run linters/formatters at commit time:
 

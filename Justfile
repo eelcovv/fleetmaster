@@ -122,13 +122,16 @@ generate-ship-rotation:
     @uv run python examples/defraction_box.py --output-dir examples --file-base boxship --only-base; exit 0
 
 # Run fleetmaster examples
-fleetmaster-all: fleetmaster-full fleetmaster-half
+fleetmaster-all: fleetmaster-full fleetmaster-half fleetmaster-rotation
 fleetmaster-full: generate-box-mesh-full
     @fleetmaster -v run --settings-file examples/settings_full.yml --lid; exit 0
 fleetmaster-half: generate-box-mesh-half
     @fleetmaster -v run --settings-file examples/settings_half.yml; exit 0
 fleetmaster-rotation: generate-ship-rotation
     @fleetmaster -v run --settings-file examples/settings_rotations.yml; exit 0
+
+fitting-example:
+    @uv run python examples/fitting_example.py
 
 # clean examples directory
 clean-examples: clean-examples-stl clean-examples-hdf5

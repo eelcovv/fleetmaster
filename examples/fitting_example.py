@@ -15,6 +15,38 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
+def _run_and_print_test_case(
+    case_number: int,
+    description: str,
+    hdf5_path: Path,
+    target_translation: list[float],
+    target_rotation: list[float],
+    water_level: float,
+    expected_match: str,
+    note: str = "",
+):
+    """Runs a single fitting test case and prints the results."""
+    print(f"\n\n--- Running Test Case {case_number}: {description} ---")
+    logger.info(f"Searching for best match for translation={target_translation}, rotation={target_rotation}...\n")
+
+    best_match, distance = find_best_matching_mesh(
+        hdf5_path=hdf5_path,
+        target_translation=target_translation,
+        target_rotation=target_rotation,
+        water_level=water_level,
+    )
+
+    print(f"\n--- Result for Test Case {case_number} ---")
+    if best_match:
+        print(f"✅ Best match found: '{best_match}'")
+        print(f"   - Minimized Chamfer Distance: {distance:.6f}")
+        print(f"   - Expected match: '{expected_match}'")
+        if note:
+            print(f"   - Note: {note}")
+    else:
+        print("❌ No match found.")
+
+
 def run_fitting_example():
     """Runs the fitting example.
 
@@ -32,85 +64,76 @@ def run_fitting_example():
     # the meshes in the database were generated (wetted surface).
     water_level = 0.0
 
-    draft = 2.0
-
     # --- Test Case 1: A transformation that should perfectly match an existing mesh ---
-    # We are looking for a mesh that corresponds to a Z-translation of -1.0,
-    # a roll of 20 degrees, and a pitch of 20 degrees.
-    # The database contains 'boxship_t_1_r_20_20_00.stl' with these exact parameters.
-    print("\n--- Running Test Case 1: Exact Match ---")
-    target_translation_1 = [0.0, 0.0, -draft]
-    target_rotation_1 = [20.0, 20.0, 0.0]  # [roll, pitch, yaw]
-
-    logger.info(f"Searching for best match for translation={target_translation_1}, rotation={target_rotation_1}...\n")
-
-    best_match_1, distance_1 = find_best_matching_mesh(
+    _run_and_print_test_case(
+        case_number=1,
+        description="Exact Match Draft 1 meter",
         hdf5_path=hdf5_path,
-        target_translation=target_translation_1,
-        target_rotation=target_rotation_1,
+        target_translation=[0.0, 0.0, -1.0],
+        target_rotation=[20.0, 20.0, 0.0],
         water_level=water_level,
+        expected_match="boxship_t_1_r_20_20_00",
     )
-
-    print("\n--- Result for Test Case 1 ---")
-    if best_match_1:
-        print(f"✅ Best match found: '{best_match_1}'")
-        print(f"   - Minimized Chamfer Distance: {distance_1:.6f}")
-        print("   - Expected match: 'boxship_t_1_r_20_20_00'")
-    else:
-        print("❌ No match found.")
 
     # --- Test Case 2: A transformation with irrelevant translations and rotations ---
-    # This case has the same core properties (Z-trans, X/Y-rot) as Case 1,
-    # but with added X/Y translation and a Z rotation (yaw).
-    # The optimization algorithm should ignore these and still find the same best match.
-    print("\n\n--- Running Test Case 2: Match with Noise ---")
-    target_translation_2 = [2.5, -4.2, -draft]  # Added dx, dy
-    target_rotation_2 = [20.0, 20.0, 15.0]  # Added yaw
-
-    logger.info(f"Searching for best match for translation={target_translation_2}, rotation={target_rotation_2}...\n")
-
-    best_match_2, distance_2 = find_best_matching_mesh(
+    _run_and_print_test_case(
+        case_number=2,
+        description="Match with Noise draft 1.0",
         hdf5_path=hdf5_path,
-        target_translation=target_translation_2,
-        target_rotation=target_rotation_2,
+        target_translation=[2.5, -4.2, -1.1],  # Added dx, dy and dz
+        target_rotation=[20.0, 20.0, 15.0],  # Added yaw
         water_level=water_level,
+        expected_match="boxship_t_1_r_20_20_00",
+        note="The distance should be very close to the distance in Case 1.",
     )
 
-    print("\n--- Result for Test Case 2 ---")
-    if best_match_2:
-        print(f"✅ Best match found: '{best_match_2}'")
-        print(f"   - Minimized Chamfer Distance: {distance_2:.6f}")
-        print("   - Expected match: 'boxship_t_1_r_20_20_00'")
-        print("   - Note: The distance should be very close to the distance in Case 1.")
-    else:
-        print("❌ No match found.")
-
-    # --- Test Case 3: A transformation with irrelevant translations and rotations ---
-    # This case has the same core properties (Z-trans, X/Y-rot) as Case 1,
-    # but with added X/Y translation and a Z rotation (yaw).
-    # this time, difference valeus for the z-translation and x,y rotation are assumed.
-    # the expected result should give a larger distance
-    print("\n\n--- Running Test Case 3: Match with Noise ---")
-    target_translation_3 = [2.5, -4.2, -draft * 1.2]  # Added dx, dy AND dz
-    target_rotation_3 = [23.0, 19.0, 15.0]  # Added yaw  AND roll and pitch
-
-    logger.info(f"Searching for best match for translation={target_translation_3}, rotation={target_rotation_3}...\n")
-
-    best_match_3, distance_3 = find_best_matching_mesh(
+    # --- Test Case 2: A transformation with irrelevant translations and rotations ---
+    _run_and_print_test_case(
+        case_number=3,
+        description="Different Match with Noise draft 1.0",
         hdf5_path=hdf5_path,
-        target_translation=target_translation_3,
-        target_rotation=target_rotation_3,
+        target_translation=[2.5, -4.2, -1.1],  # Added dx, dy AND dz
+        target_rotation=[23.0, 19.0, 15.0],  # Added yaw AND roll and pitch
         water_level=water_level,
+        expected_match="boxship_t_1_r_00_00_00",
+        note="The distance should be larger than both case 1 and case 2.",
     )
 
-    print("\n--- Result for Test Case 3 ---")
-    if best_match_2:
-        print(f"✅ Best match found: '{best_match_3}'")
-        print(f"   - Minimized Chamfer Distance: {distance_3:.6f}")
-        print("   - Expected match: 'boxship_t_1_r_20_20_00'")
-        print("   - Note: The distance should be larger than both case 1 and case 2.")
-    else:
-        print("❌ No match found.")
+    # --- Test Case 4: A transformation with different core properties ---
+    _run_and_print_test_case(
+        case_number=4,
+        description="Exact Match for draft 2.0",
+        hdf5_path=hdf5_path,
+        target_translation=[0.0, -0.0, -2],
+        target_rotation=[0.0, 0.0, 0.0],
+        water_level=water_level,
+        expected_match="boxship_t_2_r_00_00_00",
+        note="The distance should be zero.",
+    )
+
+    # --- Test Case 5: A transformation with different core properties ---
+    _run_and_print_test_case(
+        case_number=5,
+        description="Exact Match for draft 2.0 with deviation in xy plane and yaw",
+        hdf5_path=hdf5_path,
+        target_translation=[10.0, -20.0, -2],
+        target_rotation=[0.0, 0.0, 15.0],
+        water_level=water_level,
+        expected_match="boxship_t_2_r_00_00_00",
+        note="The distance should be zero.",
+    )
+
+    # --- Test Case 6: A transformation with different core properties ---
+    _run_and_print_test_case(
+        case_number=6,
+        description="Match for draft 2.0 with noise",
+        hdf5_path=hdf5_path,
+        target_translation=[10.0, -20.0, -2.2],
+        target_rotation=[4.0, -1.0, 15.0],
+        water_level=water_level,
+        expected_match="boxship_t_2_r_00_00_00",
+        note="The distance should be larger than zero.",
+    )
 
 
 if __name__ == "__main__":
