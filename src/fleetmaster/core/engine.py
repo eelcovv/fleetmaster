@@ -329,9 +329,9 @@ def _write_mesh_to_group(
         "cog_x": mesh_to_add.center_mass[0],
         "cog_y": mesh_to_add.center_mass[1],
         "cog_z": mesh_to_add.center_mass[2],
-        "bbox_lx": mesh_to_add.bounding_box.extents[0],
-        "bbox_ly": mesh_to_add.bounding_box.extents[1],
-        "bbox_lz": mesh_to_add.bounding_box.extents[2],
+        "bbox_lx": mesh_to_add.bounding_box.extents[0] if mesh_to_add.volume > 0 else 0,
+        "bbox_ly": mesh_to_add.bounding_box.extents[1] if mesh_to_add.volume > 0 else 0,
+        "bbox_lz": mesh_to_add.bounding_box.extents[2] if mesh_to_add.volume > 0 else 0,
     }
     for key, value in fingerprint_attrs.items():
         group.attrs[key] = value
