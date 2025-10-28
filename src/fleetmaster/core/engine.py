@@ -140,10 +140,10 @@ def _prepare_trimesh_geometry(stl_file: str, mesh_config: MeshConfig | None = No
     mesh = trimesh.load_mesh(stl_file)
 
     if mesh_config is None:
-        return transformed_mesh
+        return mesh
 
-    transformed_mesh = _apply_mesh_translation_and_rotation(
-        mesh=transformed_mesh,
+    return _apply_mesh_translation_and_rotation(
+        mesh=mesh,
         translation_vector=mesh_config.translation,
         rotation_vector_deg=mesh_config.rotation,
         cog=mesh_config.cog,
@@ -180,73 +180,6 @@ def _apply_mesh_translation_and_rotation(
         # Determine the point of rotation
         if cog is not None:
             rotation_point = np.asarray(cog)
-            logger.debug(f"Using specified COG {rotation_point} as rotation point.")
-        else:
-            rotation_point = mesh.center_mass
-            logger.debug(f"Using geometric center of mass {rotation_point} as rotation point.")
-
-        # Create rotation matrix for rotation around the specified point
-        rotation_vector_rad = np.deg2rad(rotation_vector_deg)
-        rotation_matrix = trimesh.transformations.euler_matrix(
-            rotation_vector_rad[0], rotation_vector_rad[1], rotation_vector_rad[2], "sxyz"
-        )
-        # The full rotation transform is: Translate to origin, Rotate, Translate back
-        # note that C = A @ B is identical to C = np.matmul(A, B)
-        rotation_transform = (
-            trimesh.transformations.translation_matrix(rotation_point)
-            @ rotation_matrix
-            @ trimesh.transformations.translation_matrix(-rotation_point)
-        )
-        transform_matrix = rotation_transform @ transform_matrix
-
-    # Apply the final translation if specified
-    if has_translation:
-        translation_matrix = trimesh.transformations.translation_matrix(translation_vector)
-        transform_matrix = translation_matrix @ transform_matrix
-
-    logger.debug(f"Applying transformation matrix:\n{transform_matrix}")
-    mesh.apply_transform(transform_matrix)
-
-    return mesh
-
-
-def _apply_mesh_translation_and_rotation(
-    mesh: trimesh.Trimesh,
-    translation_vector: npt.NDArray[np.float64] | list | None = None,
-    rotation_vector_deg: npt.NDArray[np.float64] | list | None = None,
-    cog: npt.NDArray[np.float64] | list | None = None,
-) -> trimesh.Trimesh:
-    """Apply a translation and rotation to a mesh object."""
-    if translation_vector is not None and isinstance(translation_vector, list):
-        translation_vector = np.array(translation_vector)
-    else:
-        translation_vector = np.zeros(3)
-    if rotation_vector_deg is not None and isinstance(rotation_vector_deg, list):
-        rotation_vector_deg = np.array(rotation_vector_deg)
-    else:
-        rotation_vector_deg = np.zeros(3)
-
-    has_translation = np.any(translation_vector != 0)
-    has_rotation = np.any(rotation_vector_deg != 0)
-
-    if not has_translation and not has_rotation:
-        return mesh
-
-    # Start with an identity matrix (no transformation)
-    # The affine matrix is definets as:
-    # [ R R R T ]
-    # [ R R R T ]
-    # [ R R R T ]
-    # [ 0 0 0 S ]
-    # In our case the scaling factor always S = 1.
-    transform_matrix = np.identity(4)
-
-    # Apply rotation around the COG if specified
-    if has_rotation:
-        # Determine the point of rotation
-        if cog is not None:
-            if isinstance(cog, list):
-                rotation_point = np.array(cog)
             logger.debug(f"Using specified COG {rotation_point} as rotation point.")
         else:
             rotation_point = mesh.center_mass
@@ -396,9 +329,9 @@ def _write_mesh_to_group(
         "cog_x": mesh_to_add.center_mass[0],
         "cog_y": mesh_to_add.center_mass[1],
         "cog_z": mesh_to_add.center_mass[2],
-        "bbox_lx": mesh_to_add.bounding_box.extents[0],
-        "bbox_ly": mesh_to_add.bounding_box.extents[1],
-        "bbox_lz": mesh_to_add.bounding_box.extents[2],
+        "bbox_lx": mesh_to_add.bounding_box.extents[0] if mesh_to_add.volume > 0 else 0,
+        "bbox_ly": mesh_to_add.bounding_box.extents[1] if mesh_to_add.volume > 0 else 0,
+        "bbox_lz": mesh_to_add.bounding_box.extents[2] if mesh_to_add.volume > 0 else 0,
     }
     for key, value in fingerprint_attrs.items():
         group.attrs[key] = value
