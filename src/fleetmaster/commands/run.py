@@ -179,30 +179,26 @@ def _resolve_paths_in_config(config: dict[str, Any], settings_dir: Path) -> None
     """Resolves relative paths for 'base_mesh' and 'stl_files' in the config."""
     # Resolve base_mesh path
     if config.get("base_mesh") and not Path(config["base_mesh"]).is_absolute():
-        config["base_mesh"] = str((settings_dir / config["base_mesh"]).resolve())
+        config["base_mesh"] = str(settings_dir / config["base_mesh"])
 
     # Resolve stl_files paths
-    if "stl_files" not in config:
+    if not config.get("stl_files"):
         return
 
-    resolved_files: list[Any] = []
+    resolved_stl_files: list[str | dict[str, Any]] = []
     for item in config["stl_files"]:
-        if isinstance(item, str):
-            if not Path(item).is_absolute():
-                resolved_files.append(str((settings_dir / item).resolve()))
-            else:
-                resolved_files.append(item)
-        elif isinstance(item, dict) and "file" in item:
-            if not Path(item["file"]).is_absolute():
-                item["file"] = str((settings_dir / item["file"]).resolve())
-            resolved_files.append(item)
-        elif isinstance(item, MeshConfig):
-            if not Path(item.file).is_absolute():
-                item.file = str((settings_dir / item.file).resolve())
-            resolved_files.append(item)
+        path_str = item if isinstance(item, str) else item.get("file")
+
+        if path_str and not Path(path_str).is_absolute():
+            new_path = str(settings_dir / path_str)
+            if isinstance(item, str):
+                resolved_stl_files.append(new_path)
+            elif isinstance(item, dict):
+                item["file"] = new_path
+                resolved_stl_files.append(item)
         else:
-            resolved_files.append(item)
-    config["stl_files"] = resolved_files
+            resolved_stl_files.append(item)
+    config["stl_files"] = resolved_stl_files
 
 
 def _load_config(settings_file: str | None, cli_args: dict[str, Any]) -> dict[str, Any]:
@@ -245,7 +241,16 @@ def _load_and_validate_settings(
 
     base_mesh_path = config.get("base_mesh")
     if "stl_files" in config:
-        all_files_in_config = [item if isinstance(item, str) else item["file"] for item in config["stl_files"]]
+        # Convert dicts to MeshConfig objects to satisfy mypy
+        new_stl_files: list[str | MeshConfig] = []
+        for item in config["stl_files"]:
+            if isinstance(item, dict):
+                new_stl_files.append(MeshConfig(**item))
+            else:
+                new_stl_files.append(str(item))  # it's a string
+        config["stl_files"] = new_stl_files
+
+        all_files_in_config = [item if isinstance(item, str) else item.file for item in config["stl_files"]]
 
         if not base_mesh_path and all_files_in_config:
             base_mesh_path = all_files_in_config[0]
