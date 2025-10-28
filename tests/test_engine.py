@@ -453,6 +453,7 @@ def test_add_mesh_to_database_with_meshconfig_attrs(mock_h5py_file, tmp_path):
     mock_mesh.volume = 1.0
     mock_mesh.center_mass = [0, 0, 0]
     mock_mesh.bounding_box.extents = [1, 1, 1]
+    mock_mesh.is_empty = False  # Ensure the mock mesh is not considered empty
 
     # Act
     add_mesh_to_database(output_file, mock_mesh, "test_mesh", mesh_config=mesh_config)
