@@ -1,7 +1,10 @@
+from typing import Any
+
 import numpy as np
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from fleetmaster.core.exceptions import (
+    InvalidVectorLength,
     LidAndSymmetryEnabledError,
     NegativeForwardSpeedError,
     NonPositivePeriodError,
@@ -14,6 +17,9 @@ class MeshConfig(BaseModel):
     """Configuration for a single mesh, including its path and transformation."""
 
     file: str
+    name: str | None = Field(
+        default=None, description="An optional name for the mesh. If not provided, it's derived from the file name."
+    )
     translation: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
     rotation: list[float] = Field(
         default_factory=lambda: [0.0, 0.0, 0.0], description="Rotation [roll, pitch, yaw] in degrees."
@@ -27,6 +33,20 @@ class MeshConfig(BaseModel):
     wave_directions: float | list[float] | None = Field(
         default=None, description="Mesh-specific wave directions in degrees. Overrides global settings."
     )
+
+    @field_validator("translation", "rotation")
+    def check_vector_length(cls, v: list[float]) -> list[float]:
+        if len(v) != 3:
+            msg = "Translation and rotation must a of length 3"
+            raise InvalidVectorLength(msg)
+        return v
+
+    @field_validator("cog")
+    def check_cog_length(cls, v: list[float] | None) -> list[float] | None:
+        if v is not None and len(v) != 3:
+            msg = "Cog must be a list of 3 floats or None"
+            raise InvalidVectorLength(msg)
+        return v
 
 
 class SimulationSettings(BaseModel):
@@ -43,14 +63,11 @@ class SimulationSettings(BaseModel):
         default=None,
         description="A point [x, y, z] in the local coordinate system of the base_mesh that defines the world origin.",
     )
-    stl_files: list[str | MeshConfig] = Field(description="A list of STL mesh files or mesh configurations.")
+    stl_files: list[MeshConfig] = Field(description="A list of STL mesh files or mesh configurations.")
     output_directory: str | None = Field(default=None, description="Directory to save the output files.")
     output_hdf5_file: str = Field(default="results.hdf5", description="Path to the HDF5 output file.")
     wave_periods: float | list[float] = Field(default=[5.0, 10.0, 15.0, 20.0])
     wave_directions: float | list[float] = Field(default=[0.0, 45.0, 90.0, 135.0, 180.0])
-    translation_x: float = Field(default=0.0, description="Translation in X-direction to apply to the mesh.")
-    translation_y: float = Field(default=0.0, description="Translation in Y-direction to apply to the mesh.")
-    translation_z: float = Field(default=0.0, description="Translation in Z-direction to apply to the mesh.")
     forward_speed: float | list[float] = 0.0
     lid: bool = False
     add_center_of_mass: bool = False
@@ -65,6 +82,12 @@ class SimulationSettings(BaseModel):
     combine_cases: bool = Field(
         default=False, description="Combine all calculated cases for a single STL into one multi-dimensional dataset."
     )
+
+    @field_validator("stl_files", mode="before")
+    def normalize_stl_files(cls, v: Any) -> Any:
+        if not isinstance(v, list):
+            return v
+        return [MeshConfig(file=item) if isinstance(item, str) else item for item in v]
 
     # field validator checks the value of one specific field inmediately
     @field_validator("forward_speed")

@@ -31,6 +31,13 @@ class NonPositivePeriodError(SimulationConfigurationError):
         super().__init__(message)
 
 
+class InvalidVectorLength(SimulationConfigurationError):
+    """Raised when a vector has an invalid length."""
+
+    def __init__(self, message: str = "Invalid vector length") -> None:
+        super().__init__(message)
+
+
 class HDF5AttributeError(ValueError):
     """Raised when a required attribute is missing from an HDF5 file."""
 
