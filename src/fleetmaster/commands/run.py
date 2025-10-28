@@ -3,6 +3,7 @@ import logging
 import re
 import types
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, TypeVar, Union, get_args, get_origin
 
 import click
@@ -11,7 +12,7 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from fleetmaster.core.engine import run_simulation_batch
-from fleetmaster.core.settings import SimulationSettings
+from fleetmaster.core.settings import MeshConfig, SimulationSettings
 
 logger = logging.getLogger(__name__)
 
@@ -140,16 +141,10 @@ def _process_cli_args(kwargs: dict[str, Any], model: type[BaseModel]) -> dict[st
     return cli_args
 
 
-def _load_and_validate_settings(
-    settings_file: str | None,
-    stl_files: tuple[str, ...],
-    kwargs: dict[str, Any],
-) -> SimulationSettings:
-    """Load settings from file or CLI, merge them, and validate."""
-    expanded_stl_files = _expand_stl_files(stl_files)
-    cli_args = _process_cli_args(kwargs, SimulationSettings)
-
-    # --- Validation of input combinations ---
+def _validate_input_combinations(
+    settings_file: str | None, expanded_stl_files: list[str], cli_args: dict[str, Any]
+) -> None:
+    """Validates the combination of provided command-line arguments."""
     has_settings_file = bool(settings_file)
     has_stl_files = bool(expanded_stl_files)
     has_drafts = "drafts" in cli_args
@@ -170,13 +165,97 @@ def _load_and_validate_settings(
         err_msg = "Either a settings file or at least one STL file must be provided."
         raise click.UsageError(err_msg)
 
-    # --- Configuration Loading ---
-    config: dict[str, Any] = {}
-    if settings_file:
-        with open(settings_file) as f:
-            config = yaml.safe_load(f) or {}
-    elif expanded_stl_files:
-        config["stl_files"] = expanded_stl_files
+
+def _parse_yaml_ranges(config: dict[str, Any]) -> None:
+    """Parses range strings (e.g., '0:10:1') in config for specific keys."""
+    for key in ["wave_periods", "wave_directions", "drafts"]:
+        if key in config and isinstance(config[key], str):
+            parsed_range = _parse_range_string(config[key])
+            if parsed_range is not None:
+                config[key] = parsed_range
+
+
+def _resolve_paths_in_config(config: dict[str, Any], settings_dir: Path) -> None:
+    """Resolves relative paths for 'base_mesh' and 'stl_files' in the config."""
+    # Resolve base_mesh path
+    if config.get("base_mesh") and not Path(config["base_mesh"]).is_absolute():
+        config["base_mesh"] = str(settings_dir / config["base_mesh"])
+
+    # Resolve stl_files paths
+    if not config.get("stl_files"):
+        return
+
+    resolved_stl_files: list[str | dict[str, Any]] = []
+    for item in config["stl_files"]:
+        path_str = item if isinstance(item, str) else item.get("file")
+
+        if path_str and not Path(path_str).is_absolute():
+            new_path = str(settings_dir / path_str)
+            if isinstance(item, str):
+                resolved_stl_files.append(new_path)
+            elif isinstance(item, dict):
+                item["file"] = new_path
+                resolved_stl_files.append(item)
+        else:
+            resolved_stl_files.append(item)
+    config["stl_files"] = resolved_stl_files
+
+
+def _load_config(settings_file: str | None, cli_args: dict[str, Any]) -> dict[str, Any]:
+    """Loads configuration from a YAML file or CLI arguments."""
+    if not settings_file:
+        # Handle case where settings are purely from CLI
+        config: dict[str, Any] = {}
+        if cli_args.get("stl_files"):
+            config["stl_files"] = cli_args.pop("stl_files")
+        return config
+
+    # Handle case with a settings file
+    if "base_mesh" in cli_args:
+        err_msg = "--base-mesh cannot be used with --settings-file."
+        raise click.UsageError(err_msg)
+
+    with open(settings_file) as f:
+        config = yaml.safe_load(f) or {}
+
+    _parse_yaml_ranges(config)
+    _resolve_paths_in_config(config, Path(settings_file).parent)
+
+    return config
+
+
+def _load_and_validate_settings(
+    settings_file: str | None,
+    stl_files: tuple[str, ...],
+    kwargs: dict[str, Any],
+) -> SimulationSettings:
+    """Load settings from file or CLI, merge them, and validate."""
+    expanded_stl_files = _expand_stl_files(stl_files)
+    cli_args = _process_cli_args(kwargs, SimulationSettings)
+
+    if expanded_stl_files:
+        cli_args["stl_files"] = expanded_stl_files
+
+    _validate_input_combinations(settings_file, expanded_stl_files, cli_args)
+    config = _load_config(settings_file, cli_args)
+
+    base_mesh_path = config.get("base_mesh")
+    if "stl_files" in config:
+        # Convert dicts to MeshConfig objects to satisfy mypy
+        new_stl_files: list[str | MeshConfig] = []
+        for item in config["stl_files"]:
+            if isinstance(item, dict):
+                new_stl_files.append(MeshConfig(**item))
+            else:
+                new_stl_files.append(str(item))  # it's a string
+        config["stl_files"] = new_stl_files
+
+        all_files_in_config = [item if isinstance(item, str) else item.file for item in config["stl_files"]]
+
+        if not base_mesh_path and all_files_in_config:
+            base_mesh_path = all_files_in_config[0]
+            logger.info(f"No --base-mesh provided. Using the first STL file as the base mesh: {base_mesh_path}")
+            config["base_mesh"] = base_mesh_path
 
     config.update(cli_args)
 
@@ -186,10 +265,10 @@ def _load_and_validate_settings(
         click.echo("❌ Error: Invalid settings provided.", err=True)
         click.echo(e, err=True)
         raise click.Abort() from e
-    else:
-        logger.info("Successfully validated simulation settings.")
-        logger.debug(f"Running with settings: {settings.model_dump_json(indent=2)}")
-        return settings
+
+    logger.info("Successfully validated simulation settings.")
+    logger.debug(f"Running with settings: {settings.model_dump_json(indent=2)}")
+    return settings
 
 
 def _get_option_type_info(raw_option_type: Any) -> tuple[bool, bool, Any]:
@@ -231,7 +310,7 @@ def create_cli_options(model: type[BaseModel]) -> Callable[[F], F]:
     def decorator(f: F) -> F:
         # Decorators are applied bottom-up, so reverse the order of fields
         for name, field in reversed(model.model_fields.items()):
-            # Skip stl_files as it's handled as a direct argument
+            # Skip stl_files as it's handled as a direct argument. base_mesh is handled separately.
             if name == "stl_files":
                 continue
 

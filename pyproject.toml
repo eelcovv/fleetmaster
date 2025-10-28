@@ -13,11 +13,10 @@ classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
+
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
@@ -28,33 +27,18 @@ dependencies = [
     "h5netcdf>=1.7.0",
     "h5py>=3.15.0",
     "numpy>=2.0.2",
-    "pandas>=2.3.3",
     "pydantic>=2.12.2",
     "pyglet<2",
     "pyyaml>=6.0.3",
     "rich>=14.2.0",
+    "scipy>=1.10",
     "trimesh>=4.8.3",
-    "vtk>=9.5.2",
+    "vtk>=9.3",
     "xarray>=2025.6.1",
 ]
 
 [project.optional-dependencies]
 gui = ["pyside6-essentials>=6.10.0"]
-dev = [
-    "pytest>=7.2.0",
-    "pre-commit>=4.3.0",
-    "tox-uv>=1.11.3",
-    "deptry>=0.22.0",
-    "mypy>=1.18.2",
-    "pytest-cov>=4.0.0",
-    "ruff>=0.14.1",
-    "mkdocs>=1.4.2",
-    "mkdocs-material>=8.5.10",
-    "mkdocstrings[python]>=0.26.1",
-    "types-PyYAML>=6.0.12.12",
-    "pandas-stubs>=2.3.2.250926",
-    "pyside6-essentials>=6.10.0",
-]
 
 [dependency-groups]
 dev = [
@@ -72,6 +56,9 @@ dev = [
     "pyside6-essentials>=6.10.0",
     "pandas-stubs>=2.3.2.250926",
     "pytest-mock>=3.15.1",
+]
+pymeshup = [
+    "pymeshup>=25.10.17",
 ]
 
 [project.urls]
@@ -91,7 +78,6 @@ requires = ["setuptools>=61.2", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.dynamic]
-version = { attr = "setuptools_scm.get_version" }
 readme = { file = ["README.md"], content-type = "text/markdown" }
 
 
@@ -133,7 +119,7 @@ module = [
     "pandas",
     "PySide6.*",
     "rich.*",
-    "trimesh.*",
+    "scipy.*",
     "vtk.*",
     "yaml",
 ]
@@ -208,6 +194,7 @@ source = ["src"]
 # 🔹 DEBTRY
 # ========================================================================================
 [tool.deptry]
+exclude = ["examples", ".tox", ".venv", "tests"]
 # This section defines which errors to ignore for which packages.
 # It is NOT an inline table, but a nested table structure.
 

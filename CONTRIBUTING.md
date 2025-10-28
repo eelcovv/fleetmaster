@@ -127,6 +127,76 @@ Before you submit a pull request, check that it meets these guidelines:
 2. If the pull request adds functionality, the docs should be updated.
    Put your new functionality into a function with a docstring, and add the feature to the list in `README.md`.
 
+### Squashing Commits
+
+To create a clean pull request with a single commit, you can squash your commits before pushing. Here is an example of how to do this from the command line:
+
+**Step 1: Start the Interactive Rebase**
+
+First, you need to determine the point from which you want to merge the commits. Usually, this is the point where your branch diverged from `main`.
+
+1.  Ensure your `main` branch is up-to-date:
+
+    ```bash
+    git fetch origin
+    git checkout main
+    git pull origin main
+    ```
+
+2.  Return to your feature branch (replace `your-branch-name` with the name of your branch):
+
+    ```bash
+    git checkout your-branch-name
+    ```
+
+3.  Start the interactive rebase. This will open an editor with a list of your commits:
+    ```bash
+    git rebase -i main
+    ```
+
+**Step 2: Squash the Commits**
+
+In the editor that opens, you will see a list of your commits, each prefixed with the word `pick`.
+
+1.  Keep the top (oldest) commit as `pick`.
+2.  Change `pick` to `squash` (or `s`) for all other commits you want to merge.
+3.  Save the file and close the editor.
+
+```
+# Example of the rebase editor:
+pick f7fde4a Fix feature A
+squash 310154e Add tests for feature A
+squash a5f4a0d Refactor feature A
+
+# After your changes:
+pick f7fde4a Fix feature A
+s 310154e Add tests for feature A
+s a5f4a0d Refactor feature A
+```
+
+**Step 3: Write the New Commit Message**
+
+After closing the first editor, a new editor will open where you can write the commit message for the new, combined commit. The messages from the old commits are there for inspiration.
+
+1.  Delete the old messages and write one clear, new commit message that summarizes all your work.
+2.  Save the file and close the editor to complete the rebase.
+
+**Step 4: Push Your Branch**
+
+Because you have rewritten the history of your branch, you must use a "force push".
+
+**Note:** This is a powerful action. Make sure you are the only one working on this branch.
+
+```bash
+git push --force-with-lease
+```
+
+(`--force-with-lease` is a safer alternative to `--force`.)
+
+**Step 5: Create the Pull Request**
+
+Now that your branch is updated on the remote (GitHub, GitLab, etc.), you can create the PR.
+
 ## Developers tips and tricks
 
 ### vscode

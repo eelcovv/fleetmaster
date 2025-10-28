@@ -144,3 +144,4 @@ cython_debug/
 *.tec
 *.nc
 *.hdf5
+*.stl

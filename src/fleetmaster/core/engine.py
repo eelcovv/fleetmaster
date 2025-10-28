@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -8,14 +9,23 @@ import capytaine as cpt
 import h5py
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 import trimesh
 import xarray as xr
 
 from .exceptions import LidAndSymmetryEnabledError
-from .settings import MESH_GROUP_NAME, SimulationSettings
+from .io import load_meshes_from_hdf5
+from .settings import MESH_GROUP_NAME, MeshConfig, SimulationSettings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class EngineMesh:
+    """Represents a mesh object with its configuration."""
+
+    name: str
+    mesh: trimesh.Trimesh
+    config: MeshConfig
 
 
 def make_database(
@@ -74,7 +84,7 @@ def make_database(
         database = database.rename_dims(dims_to_rename)
 
     for coord_name, coord_data in database.coords.items():
-        if isinstance(coord_data.dtype, pd.CategoricalDtype):
+        if hasattr(coord_data.dtype, "categories"):  # Check for categorical dtype without pandas
             logger.debug(f"Converting coordinate '{coord_name}' from Categorical to string dtype.")
             database[coord_name] = database[coord_name].astype(str)
 
@@ -86,6 +96,9 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
     Determine the output directory and prepare the HDF5 file.
     Deletes the file if it already exists.
 
+    If the output_directory is given in de settings file, the hd5 file is store in this directory.
+    If no output_directory is, the hdf5 is stored next to the settings file itself.
+
     Returns:
         The full path to the HDF5 output file.
     """
@@ -93,7 +106,15 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
         msg = "No STL files provided to process."
         raise ValueError(msg)
 
-    output_dir = Path(settings.output_directory) if settings.output_directory else Path(settings.stl_files[0]).parent
+    first_stl_entry = settings.stl_files[0]
+    if isinstance(first_stl_entry, dict):
+        first_stl_path = first_stl_entry["file"]
+    elif isinstance(first_stl_entry, str):
+        first_stl_path = first_stl_entry
+    else:  # Is an object with a .file attribute
+        first_stl_path = first_stl_entry.file
+
+    output_dir = Path(settings.output_directory) if settings.output_directory else Path(first_stl_path).parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_dir / settings.output_hdf5_file
@@ -103,83 +124,247 @@ def _setup_output_file(settings: SimulationSettings) -> Path:
     return output_file
 
 
-def _prepare_trimesh_geometry(
-    stl_file: str,
-    translation_x: float = 0.0,
-    translation_y: float = 0.0,
-    translation_z: float = 0.0,
-) -> trimesh.Trimesh:
+def _prepare_trimesh_geometry(stl_file: str, mesh_config: MeshConfig | None = None) -> trimesh.Trimesh:
     """
-    Loads an STL file and applies specified translations.
+    Loads an STL file and applies the specified translation and rotation.
+
+    The rotation (roll, pitch, yaw) is performed around the center of gravity (cog)
+    if specified in the mesh_config. If no cog is specified, the mesh's geometric
+    center of mass is used as the rotation point. If no configuration is given,
+    the untransformed loaded mesh is returned.
 
     Returns:
         A trimesh.Trimesh object representing the transformed geometry.
     """
     transformed_mesh = trimesh.load_mesh(stl_file)
 
-    # Apply translation if specified
-    if translation_x != 0.0 or translation_y != 0.0 or translation_z != 0.0:
-        translation_vector = np.array([translation_x, translation_y, translation_z])
-        logger.debug(f"Applying mesh translation: {translation_vector}")
-        transform_matrix = trimesh.transformations.translation_matrix(translation_vector)
-        transformed_mesh.apply_transform(transform_matrix)
+    if mesh_config is None:
+        return transformed_mesh
 
+    transformed_mesh = _apply_mesh_translation_and_rotation(
+        mesh=transformed_mesh,
+        translation_vector=mesh_config.translation,
+        rotation_vector_deg=mesh_config.rotation,
+        cog=mesh_config.cog,
+    )
     return transformed_mesh
 
 
+def _apply_mesh_translation_and_rotation(
+    mesh: trimesh.Trimesh,
+    translation_vector: npt.NDArray[np.float64] | list | None = None,
+    rotation_vector_deg: npt.NDArray[np.float64] | list | None = None,
+    cog: npt.NDArray[np.float64] | list | None = None,
+) -> trimesh.Trimesh:
+    """Apply a translation and rotation to a mesh object."""
+    if translation_vector is not None and isinstance(translation_vector, list):
+        translation_vector = np.array(translation_vector)
+    else:
+        translation_vector = np.zeros(3)
+    if rotation_vector_deg is not None and isinstance(rotation_vector_deg, list):
+        rotation_vector_deg = np.array(rotation_vector_deg)
+    else:
+        rotation_vector_deg = np.zeros(3)
+
+    has_translation = np.any(translation_vector != 0)
+    has_rotation = np.any(rotation_vector_deg != 0)
+
+    if not has_translation and not has_rotation:
+        return mesh
+
+    # Start with an identity matrix (no transformation)
+    # The affine matrix is definets as:
+    # [ R R R T ]
+    # [ R R R T ]
+    # [ R R R T ]
+    # [ 0 0 0 S ]
+    # In our case the scaling factor always S = 1.
+    transform_matrix = np.identity(4)
+
+    # Apply rotation around the COG if specified
+    if has_rotation:
+        # Determine the point of rotation
+        if cog is not None:
+            if isinstance(cog, list):
+                rotation_point = np.array(cog)
+            logger.debug(f"Using specified COG {rotation_point} as rotation point.")
+        else:
+            rotation_point = mesh.center_mass
+            logger.debug(f"Using geometric center of mass {rotation_point} as rotation point.")
+
+        # Create rotation matrix for rotation around the specified point
+        rotation_vector_rad = np.deg2rad(rotation_vector_deg)
+        rotation_matrix = trimesh.transformations.euler_matrix(
+            rotation_vector_rad[0], rotation_vector_rad[1], rotation_vector_rad[2], "sxyz"
+        )
+        # The full rotation transform is: Translate to origin, Rotate, Translate back
+        # note that C = A @ B is identical to C = np.matmul(A, B)
+        rotation_transform = (
+            trimesh.transformations.translation_matrix(rotation_point)
+            @ rotation_matrix
+            @ trimesh.transformations.translation_matrix(-rotation_point)
+        )
+        transform_matrix = rotation_transform @ transform_matrix
+
+    # Apply the final translation if specified
+    if has_translation:
+        translation_matrix = trimesh.transformations.translation_matrix(translation_vector)
+        transform_matrix = translation_matrix @ transform_matrix
+
+    logger.debug(f"Applying transformation matrix:\n{transform_matrix}")
+    mesh.apply_transform(transform_matrix)
+
+    return mesh
+
+
 def _prepare_capytaine_body(
-    source_mesh: trimesh.Trimesh,
-    mesh_name: str,
+    engine_mesh: EngineMesh,
     lid: bool,
-    grid_symmetry: bool,
-    add_center_of_mass: bool = False,
-) -> tuple[Any, trimesh.Trimesh]:
+    grid_symmetry: bool,  # Added from SimulationSettings
+    water_level: float = 0.0,
+) -> tuple[Any, trimesh.Trimesh | None]:
     """
     Configures a Capytaine FloatingBody from a pre-prepared trimesh object.
-    """
-    cog = source_mesh.center_mass if add_center_of_mass else None
-    if cog is not None:
-        logger.debug(f"Adding COG {cog}")
 
-    # 1. Save the transformed mesh to a temporary file and load it with Capytaine.
+    The `center_of_mass` for Capytaine is determined by `mesh_config.cog`,
+    falling back to the mesh's geometric center of mass. If no cog is given in
+    the settings file, the geometric center of mass is used.
+    """
+    cog = None
+
+    if engine_mesh.config.cog:
+        cog = np.array(engine_mesh.config.cog)
+        logger.debug(f"Using specified COG {cog} as the center of mass for Capytaine.")
+    else:
+        # If no local_origin is specified, use the center of mass of the (already translated) source_mesh.
+        cog = engine_mesh.mesh.center_mass
+        logger.debug(f"Using geometric center of mass {cog} of the translated mesh for Capytaine.")
+
+    # Save the transformed mesh to a temporary file and load it with Capytaine.
     # This is more robust than creating a cpt.Mesh from vertices/faces directly.
     # We use NamedTemporaryFile to handle creation and cleanup automatically.
     temp_path = None
     try:
+        # Write to the temporary file.
         with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as temp_file:
             temp_path = Path(temp_file.name)
-            # Step 1: Write to the temporary file.
-            source_mesh.export(temp_file, file_type="stl")
+            engine_mesh.mesh.export(temp_file, file_type="stl")
             logger.debug(f"Exported transformed mesh to temporary file: {temp_path}")
 
-        # Step 2: Read from the now-closed temporary file. This avoids race conditions.
-        hull_mesh = cpt.load_mesh(str(temp_path), name=mesh_name)
+        # Read from the now-closed temporary file. This avoids race conditions.
+        hull_mesh = cpt.load_mesh(str(temp_path), name=engine_mesh.name)
 
     finally:
-        # Step 3: Ensure the temporary file is always deleted, even if an error occurs.
+        # Ensure the temporary file is always deleted, even if an error occurs.
         if temp_path and temp_path.exists():
             logger.debug(f"Deleting temporary file: {temp_path}")
             temp_path.unlink()
 
-    # 4. Configure the Capytaine FloatingBody
+    # Configure the Capytaine FloatingBody
     lid_mesh = hull_mesh.generate_lid(z=-0.01) if lid else None
     if grid_symmetry:
         logger.debug("Applying grid symmetery")
         hull_mesh = cpt.ReflectionSymmetricMesh(hull_mesh, plane=cpt.xOz_Plane)
 
     boat = cpt.FloatingBody(mesh=hull_mesh, lid_mesh=lid_mesh, center_of_mass=cog)
-    boat.add_all_rigid_body_dofs()
-    boat.keep_immersed_part()
+    boat.keep_immersed_part(free_surface=water_level)
 
-    # 5. Extract the final mesh that Capytaine will use for the database. After keep_immersed_part,
+    # Important: do this step after keep_immersed_part in order to keep the body constent with the cut mesh
+    boat.add_all_rigid_body_dofs()
+
+    # Extract the final mesh that Capytaine will use for the database. After keep_immersed_part,
     # boat.mesh contains the correct vertices and faces for both regular and symmetric meshes.
     final_mesh_trimesh = trimesh.Trimesh(vertices=boat.mesh.vertices, faces=boat.mesh.faces)
 
     return boat, final_mesh_trimesh
 
 
+def _get_mesh_hash(mesh_to_add: trimesh.Trimesh) -> tuple[bytes, str]:
+    """Exports mesh and computes its SHA256 hash."""
+    new_stl_content = mesh_to_add.export(file_type="stl")
+    if isinstance(new_stl_content, str):
+        new_stl_content = new_stl_content.encode()
+    elif not isinstance(new_stl_content, bytes):
+        msg = f"Unsupported type from trimesh export: {type(new_stl_content)}"
+        raise TypeError(msg)
+    new_hash = hashlib.sha256(new_stl_content).hexdigest()
+    return new_stl_content, new_hash
+
+
+def _handle_existing_mesh(f: Any, mesh_group_path: str, new_hash: str, overwrite: bool, mesh_name: str) -> bool:
+    """
+    Checks for existing mesh in the HDF5 file and decides whether to skip or overwrite.
+
+    Returns:
+        True if the operation should be skipped, False otherwise.
+    """
+    if mesh_group_path in f:
+        existing_group = f[mesh_group_path]
+        stored_hash = existing_group.attrs.get("sha256")
+
+        if stored_hash == new_hash:
+            logger.info(f"Mesh '{mesh_name}' has the same SHA256 hash. Skipping.")
+            return True  # Skip
+
+        if not overwrite:
+            logger.warning(
+                f"Mesh '{mesh_name}' is different from the one in the database (SHA256 mismatch). "
+                "Use --overwrite-meshes to overwrite."
+            )
+            return True  # Skip
+
+        logger.warning(f"Overwriting existing mesh '{mesh_name}' as --overwrite-meshes is specified.")
+        del f[mesh_group_path]
+    return False  # Don't skip
+
+
+def _write_mesh_to_group(
+    group: Any,
+    mesh_to_add: trimesh.Trimesh,
+    mesh_config: MeshConfig | None,
+    new_hash: str,
+    new_stl_content: bytes,
+) -> None:
+    """Writes mesh properties, metadata, and content to an HDF5 group."""
+    # Calculate geometric properties from the new mesh content
+    fingerprint_attrs = {
+        "volume": mesh_to_add.volume,
+        "cog_x": mesh_to_add.center_mass[0],
+        "cog_y": mesh_to_add.center_mass[1],
+        "cog_z": mesh_to_add.center_mass[2],
+        "bbox_lx": mesh_to_add.bounding_box.extents[0],
+        "bbox_ly": mesh_to_add.bounding_box.extents[1],
+        "bbox_lz": mesh_to_add.bounding_box.extents[2],
+    }
+    for key, value in fingerprint_attrs.items():
+        group.attrs[key] = value
+    logger.debug(f"  - Wrote {len(fingerprint_attrs)} fingerprint attributes.")
+
+    # Add hash and original file name as attributes
+    group.attrs["sha256"] = new_hash
+
+    if mesh_config:
+        if mesh_config.translation:
+            group.attrs["translation"] = mesh_config.translation
+        if mesh_config.rotation:
+            group.attrs["rotation"] = mesh_config.rotation
+        if mesh_config.cog:
+            group.attrs["cog"] = mesh_config.cog
+
+    group.create_dataset("inertia_tensor", data=mesh_to_add.moment_inertia)
+    logger.debug("  - Wrote dataset: inertia_tensor")
+
+    # Store the binary content of the final, transformed STL
+    group.create_dataset("stl_content", data=np.void(new_stl_content))
+    logger.debug("  - Wrote dataset: stl_content")
+
+
 def add_mesh_to_database(
-    output_file: Path, mesh_to_add: trimesh.Trimesh, mesh_name: str, overwrite: bool = False
+    output_file: Path,
+    mesh_to_add: trimesh.Trimesh,
+    mesh_name: str,
+    overwrite: bool = False,
+    mesh_config: MeshConfig | None = None,
 ) -> None:
     """
     Adds a mesh and its geometric properties to the HDF5 database under the MESH_GROUP_NAME.
@@ -191,58 +376,15 @@ def add_mesh_to_database(
         mesh_to_add: The trimesh object of the mesh to be added.
     """
     mesh_group_path = f"{MESH_GROUP_NAME}/{mesh_name}"
-
-    # Export the trimesh to an in-memory STL binary string and compute its hash.
-    new_stl_content = mesh_to_add.export(file_type="stl")
-    new_hash = hashlib.sha256(new_stl_content).hexdigest()
+    new_stl_content, new_hash = _get_mesh_hash(mesh_to_add)
 
     with h5py.File(output_file, "a") as f:
-        if mesh_group_path in f:
-            existing_group = f[mesh_group_path]
-            stored_hash = existing_group.attrs.get("sha256")
-
-            if stored_hash == new_hash:
-                logger.info(f"Mesh '{mesh_name}' has the same SHA256 hash. Skipping.")
-                return
-
-            if not overwrite:
-                logger.warning(
-                    f"Mesh '{mesh_name}' is different from the one in the database (SHA256 mismatch). "
-                    "Use --overwrite-meshes to overwrite."
-                )
-                return
-
-            logger.warning(f"Overwriting existing mesh '{mesh_name}' as --overwrite-meshes is specified.")
-            del f[mesh_group_path]
+        if _handle_existing_mesh(f, mesh_group_path, new_hash, overwrite, mesh_name):
+            return
 
         logger.debug(f"Adding mesh '{mesh_name}' to group '{MESH_GROUP_NAME}'...")
         group = f.create_group(mesh_group_path)
-
-        # Calculate geometric properties from the new mesh content
-        fingerprint_attrs = {
-            "volume": mesh_to_add.volume,
-            "cog_x": mesh_to_add.center_mass[0],
-            "cog_y": mesh_to_add.center_mass[1],
-            "cog_z": mesh_to_add.center_mass[2],
-            "bbox_lx": mesh_to_add.bounding_box.extents[0],
-            "bbox_ly": mesh_to_add.bounding_box.extents[1],
-            "bbox_lz": mesh_to_add.bounding_box.extents[2],
-        }
-        for key, value in fingerprint_attrs.items():
-            group.attrs[key] = value
-        logger.debug(f"  - Wrote {len(fingerprint_attrs)} fingerprint attributes.")
-
-        # Add hash and original file name as attributes
-        group.attrs["sha256"] = new_hash
-
-        group.create_dataset("inertia_tensor", data=mesh_to_add.moment_inertia)
-        logger.debug("  - Wrote dataset: inertia_tensor")
-
-        # Store the binary content of the final, transformed STL
-        # We must wrap the bytes in np.void to store it as opaque binary data,
-        # otherwise h5py tries to interpret it as a string and fails on NULL bytes.
-        group.create_dataset("stl_content", data=np.void(new_stl_content))
-        logger.debug("  - Wrote dataset: stl_content")
+        _write_mesh_to_group(group, mesh_to_add, mesh_config, new_hash, new_stl_content)
 
 
 def _format_value_for_name(value: float) -> str:
@@ -263,150 +405,260 @@ def _generate_case_group_name(mesh_name: str, water_depth: float, water_level: f
 
 
 def _process_single_stl(
-    stl_file: str, settings: SimulationSettings, output_file: Path, mesh_name_override: str | None = None
+    mesh_config: MeshConfig,
+    settings: SimulationSettings,
+    output_file: Path,
+    mesh_name_override: str | None = None,
+    origin_translation: npt.NDArray[np.float64] | None = None,
+) -> None:
+    """
+    Checks if a mesh exists in the database. If so, uses it.
+    If not, generates it, saves it, and then uses it for the simulation pipeline.
+    """
+    mesh_name = mesh_name_override or Path(mesh_config.file).stem
+    final_mesh_to_process: trimesh.Trimesh | None = None
+
+    # --- Workflow to determine the mesh to process ---
+    if not settings.overwrite_meshes:
+        # 1. Prioritize loading from the HDF5 database if it already exists, only if we dont want
+        # to overwrite the meshes
+        try:
+            existing_meshes = load_meshes_from_hdf5(output_file, [mesh_name])
+            if existing_meshes:
+                final_mesh_to_process = existing_meshes[0]
+                logger.info(f"Found existing mesh '{mesh_name}' in the database. Using it directly.")
+        except FileNotFoundError:
+            # The HDF5 file doesn't exist yet, so no meshes can exist. This is expected on the first run.
+            pass
+
+    # 2. If not in DB, check if a pre-translated STL file exists.
+    if final_mesh_to_process is None:
+        target_stl_path = Path(mesh_config.file)
+        if target_stl_path.exists():
+            logger.info(
+                f"Mesh '{mesh_name}' not in DB, but found STL file: '{target_stl_path}'. Loading and adding to DB."
+            )
+            # Load the existing, presumably pre-translated, STL file.
+            final_mesh_to_process = _prepare_trimesh_geometry(stl_file=str(target_stl_path))
+        else:
+            # 3. If neither DB entry nor STL file exists, generate the mesh.
+            logger.info(f"Mesh '{mesh_name}' not found in DB or as STL file. Attempting to generate it.")
+            # Use the global base_mesh as the source for generation.
+            source_file_path = settings.base_mesh
+            if not source_file_path or not Path(source_file_path).exists():
+                err_msg = (
+                    f"Cannot generate mesh '{mesh_name}'. The source file '{target_stl_path}' does not exist, "
+                    f"and no valid 'base_mesh' ('{source_file_path}') is configured to generate it from."
+                )
+                raise FileNotFoundError(err_msg)
+
+            # Load the base STL and apply the specified translation.
+            translated_mesh = _prepare_trimesh_geometry(str(source_file_path), mesh_config)
+            # Save the newly generated, translated mesh to a separate STL file for inspection.
+            logger.info(f"Saving newly generated translated mesh to: {target_stl_path}")
+            translated_mesh.export(target_stl_path)
+            final_mesh_to_process = translated_mesh
+
+    # 4. Run the complete processing pipeline with the determined mesh.
+    engine_mesh = EngineMesh(name=mesh_name, mesh=final_mesh_to_process, config=mesh_config)
+    _run_pipeline_for_mesh(engine_mesh, settings, output_file, origin_translation)
+
+
+def _log_pipeline_parameters(
+    engine_mesh: EngineMesh,
+    output_file: Path,
+    settings: SimulationSettings,
+    wave_directions_rad: list[float],
+    wave_periods: list[float],
+    water_depths: list[float],
+    water_levels: list[float],
+    forwards_speeds: list[float],
+) -> None:
+    """Logs all relevant parameters for a pipeline run for better traceability."""
+    fmt_str = "%-40s: %s"
+    logger.info(fmt_str % ("Base STL file", engine_mesh.config.file))
+    logger.info(fmt_str % ("Base STL vertices", engine_mesh.mesh.vertices.shape))
+    logger.info(fmt_str % ("Output file", output_file))
+    logger.info(fmt_str % ("Grid symmetry", settings.grid_symmetry))
+    logger.info(fmt_str % ("Use lid", settings.lid))
+    logger.info(fmt_str % ("Add COG ", settings.add_center_of_mass))
+    logger.info(fmt_str % ("Direction(s) [rad]", wave_directions_rad))
+    logger.info(fmt_str % ("Wave period(s) [s]", wave_periods))
+    logger.info(fmt_str % ("Water depth(s) [m]", water_depths))
+    logger.info(fmt_str % ("Water level(s) [m]", water_levels))
+    logger.info(fmt_str % ("Translation X", engine_mesh.config.translation[0]))
+    logger.info(fmt_str % ("Translation Y", engine_mesh.config.translation[1]))
+    logger.info(fmt_str % ("Translation Z", engine_mesh.config.translation[2]))
+    logger.info(fmt_str % ("Rotation Roll [deg]", engine_mesh.config.rotation[0]))
+    logger.info(fmt_str % ("Rotation Pitch [deg]", engine_mesh.config.rotation[1]))
+    logger.info(fmt_str % ("Rotation Yaw [deg]", engine_mesh.config.rotation[2]))
+    logger.info(fmt_str % ("Forward speed(s) [m/s]", forwards_speeds))
+
+
+def _run_pipeline_for_mesh(
+    engine_mesh: EngineMesh,
+    settings: SimulationSettings,
+    output_file: Path,
+    origin_translation: npt.NDArray[np.float64] | None,
 ) -> None:
     """
     Run the complete processing pipeline for a single STL file.
     """
-    logger.info(f"Processing STL file: {stl_file}")
+    logger.info(f"Processing STL file: {engine_mesh.config.file}")
 
     # check is done by Settings, so this should no happen anymore
     if settings.lid and settings.grid_symmetry:
         raise LidAndSymmetryEnabledError()
 
-    wave_periods = settings.wave_periods if isinstance(settings.wave_periods, list) else [settings.wave_periods]
+    # Use mesh-specific wave periods and directions if provided, otherwise fall back to global settings.
+    periods_to_use = engine_mesh.config.wave_periods or settings.wave_periods
+    wave_periods = periods_to_use if isinstance(periods_to_use, list) else [periods_to_use]
     wave_frequencies = (2 * np.pi / np.array(wave_periods)).tolist()
-    wave_directions = (
-        settings.wave_directions if isinstance(settings.wave_directions, list) else [settings.wave_directions]
-    )
-    wave_directions = np.deg2rad(wave_directions).tolist()
+
+    directions_to_use = engine_mesh.config.wave_directions or settings.wave_directions
+    wave_directions_deg = directions_to_use if isinstance(directions_to_use, list) else [directions_to_use]
+    wave_directions_rad = np.deg2rad(wave_directions_deg).tolist()
+
     water_depths = settings.water_depth if isinstance(settings.water_depth, list) else [settings.water_depth]
     water_levels = settings.water_level if isinstance(settings.water_level, list) else [settings.water_level]
-
     forwards_speeds = settings.forward_speed if isinstance(settings.forward_speed, list) else [settings.forward_speed]
 
-    add_center_of_mass = settings.add_center_of_mass
-    lid = settings.lid
-    grid_symmetry = settings.grid_symmetry
-
-    output_file = output_file
-
-    fmt_str = "%-40s: %s"
-    logger.info(fmt_str % ("Base STL file", stl_file))
-    logger.info(fmt_str % ("Output file", output_file))
-    logger.info(fmt_str % ("Grid symmetry", grid_symmetry))
-    logger.info(fmt_str % ("Use lid", lid))
-    logger.info(fmt_str % ("Add COG ", add_center_of_mass))
-    logger.info(fmt_str % ("Direction(s) [rad]", wave_directions))
-    logger.info(fmt_str % ("Wave period(s) [s]", wave_periods))
-    logger.info(fmt_str % ("Water depth(s) [m]", water_depths))
-    logger.info(fmt_str % ("Water level(s) [m]", water_levels))
-    logger.info(fmt_str % ("Translation X", settings.translation_x))
-    logger.info(fmt_str % ("Translation Y", settings.translation_y))
-    logger.info(fmt_str % ("Translation Z", settings.translation_z))
-    logger.info(fmt_str % ("Forward speed(s) [m/s]", forwards_speeds))
-
-    process_all_cases_for_one_stl(
-        stl_file=stl_file,
-        wave_frequencies=wave_frequencies,
-        wave_directions=wave_directions,
+    _log_pipeline_parameters(
+        engine_mesh=engine_mesh,
+        output_file=output_file,
+        settings=settings,
+        wave_directions_rad=wave_directions_rad,
+        wave_periods=wave_periods,
         water_depths=water_depths,
         water_levels=water_levels,
         forwards_speeds=forwards_speeds,
-        lid=lid,
-        add_center_of_mass=add_center_of_mass,
-        grid_symmetry=grid_symmetry,
+    )
+
+    process_all_cases_for_one_stl(
+        engine_mesh=engine_mesh,
+        wave_frequencies=wave_frequencies,
+        wave_directions=wave_directions_rad,
+        water_depths=water_depths,
+        water_levels=water_levels,
+        forwards_speeds=forwards_speeds,
+        lid=settings.lid,
+        grid_symmetry=settings.grid_symmetry,
         output_file=output_file,
         update_cases=settings.update_cases,
         combine_cases=settings.combine_cases,
-        translation_x=settings.translation_x,
-        translation_y=settings.translation_y,
-        translation_z=settings.translation_z,
-        mesh_name_override=mesh_name_override,
+        origin_translation=origin_translation,
     )
 
 
+def _process_and_save_single_case(
+    boat: Any,  # cpt.FloatingBody is not fully typed, use Any to satisfy mypy
+    mesh_name: str,
+    case_params: dict[str, Any],
+    output_file: Path,
+    origin_translation: npt.NDArray[np.float64] | None,
+) -> Any:
+    """Process a single simulation case and save its results to the HDF5 file."""
+    group_name = _generate_case_group_name(
+        mesh_name, case_params["water_depth"], case_params["water_level"], case_params["forward_speed"]
+    )
+
+    with h5py.File(output_file, "a") as f:
+        if group_name in f:
+            if not case_params["update_cases"]:
+                logger.info(f"Case '{group_name}' already exists in the database. Skipping.")
+                return None
+            logger.info(f"Case '{group_name}' exists, but update_cases is True. Overwriting.")
+            del f[group_name]
+
+    # Calculate the transformation matrix for this specific case relative to the global origin
+    transformation_matrix = None
+    if origin_translation is not None:
+        # The transformation is the translation from the global origin to the mesh's COG for this case.
+        # Note: boat.center_of_mass is the COG used for calculation, not necessarily the geometric center.
+        translation_vector = boat.center_of_mass - origin_translation
+        transformation_matrix = trimesh.transformations.translation_matrix(translation_vector)
+
+    logger.info(
+        f"Starting BEM calculations for water_level={case_params['water_level']}, "
+        f"water_depth={case_params['water_depth']}, forward_speed={case_params['forward_speed']}"
+    )
+    # Select only the parameters that make_database expects.
+    db_params = {
+        "omegas": case_params["omegas"],
+        "wave_directions": case_params["wave_directions"],
+        "water_depth": case_params["water_depth"],
+        "water_level": case_params["water_level"],
+        "forward_speed": case_params["forward_speed"],
+    }
+    database = make_database(body=boat, **db_params)
+
+    if not case_params["combine_cases"]:
+        logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
+        database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
+        with h5py.File(output_file, "a") as f:
+            if group_name in f:
+                case_group = f[group_name]
+                case_group.attrs["stl_mesh_name"] = mesh_name
+                if transformation_matrix is not None:
+                    case_group.attrs["transformation_matrix"] = transformation_matrix
+                if boat.center_of_mass is not None:
+                    case_group.attrs["cog_for_calculation"] = boat.center_of_mass
+
+    logger.debug(f"Successfully wrote data for case to group {group_name}.")
+    return database
+
+
 def process_all_cases_for_one_stl(
-    stl_file: str,
+    engine_mesh: EngineMesh,
     wave_frequencies: list | npt.NDArray[np.float64],
     wave_directions: list | npt.NDArray[np.float64],
     water_depths: list | npt.NDArray[np.float64],
     water_levels: list | npt.NDArray[np.float64],
     forwards_speeds: list | npt.NDArray[np.float64],
     lid: bool,
-    add_center_of_mass: bool,
     grid_symmetry: bool,
     output_file: Path,
     update_cases: bool = False,
     combine_cases: bool = False,
-    translation_x: float = 0.0,
-    translation_y: float = 0.0,
-    translation_z: float = 0.0,
-    mesh_name_override: str | None = None,
+    origin_translation: npt.NDArray[np.float64] | None = None,
 ) -> None:
-    mesh_name = mesh_name_override or Path(stl_file).stem
-
-    # 1. Prepare the base geometry with all transformations
-    trimesh_geometry = _prepare_trimesh_geometry(
-        stl_file=stl_file,
-        translation_x=translation_x,
-        translation_y=translation_y,
-        translation_z=translation_z,
-    )
-
-    # 2. Use the prepared geometry to create the Capytaine body
+    # 1. Use the prepared (and possibly translated) geometry to create the Capytaine body
     boat, final_mesh = _prepare_capytaine_body(
-        source_mesh=trimesh_geometry,
-        mesh_name=mesh_name,
+        engine_mesh=engine_mesh,
         lid=lid,
         grid_symmetry=grid_symmetry,
-        add_center_of_mass=add_center_of_mass,
     )
 
-    # Add the final, transformed, and immersed mesh to the database.
-    add_mesh_to_database(output_file, final_mesh, mesh_name, overwrite=update_cases)
+    # 2. Add the final, immersed mesh geometry to the database. This version is now the translated one.
+    if final_mesh is not None:
+        add_mesh_to_database(
+            output_file, final_mesh, engine_mesh.name, overwrite=update_cases, mesh_config=engine_mesh.config
+        )
 
     all_datasets = []
 
     for water_level in water_levels:
         for water_depth in water_depths:
             for forward_speed in forwards_speeds:
-                group_name = _generate_case_group_name(mesh_name, water_depth, water_level, forward_speed)
-
-                with h5py.File(output_file, "a") as f:
-                    if group_name in f:
-                        if not update_cases:
-                            logger.info(f"Case '{group_name}' already exists in the database. Skipping.")
-                            continue
-                        logger.info(f"Case '{group_name}' exists, but update_cases is True. Overwriting.")
-                        del f[group_name]
-
-                logger.info(
-                    f"Starting BEM calculations for water_level={water_level}, water_depth={water_depth}, forward_speed={forward_speed}"
+                case_params = {
+                    "omegas": wave_frequencies,
+                    "wave_directions": wave_directions,
+                    "water_level": water_level,
+                    "water_depth": water_depth,
+                    "forward_speed": forward_speed,
+                    "update_cases": update_cases,
+                    "combine_cases": combine_cases,
+                }
+                result_db = _process_and_save_single_case(
+                    boat, engine_mesh.name, case_params, output_file, origin_translation
                 )
-                database = make_database(
-                    body=boat,
-                    omegas=wave_frequencies,
-                    wave_directions=wave_directions,
-                    water_level=water_level,
-                    water_depth=water_depth,
-                    forward_speed=forward_speed,
-                )
-
-                if combine_cases:
-                    all_datasets.append(database)
-                else:
-                    logger.info(f"Writing simulation results to group '{group_name}' in HDF5 file: {output_file}")
-                    database.to_netcdf(output_file, mode="a", group=group_name, engine="h5netcdf")
-                    with h5py.File(output_file, "a") as f:
-                        if group_name in f:
-                            f[group_name].attrs["stl_mesh_name"] = mesh_name
-                    logger.debug(f"Successfully wrote data for case to group {group_name}.")
+                if combine_cases and result_db is not None:
+                    all_datasets.append(result_db)
 
     if combine_cases and all_datasets:
         logger.info("Combining all calculated cases into a single multi-dimensional dataset.")
         combined_dataset = xr.combine_by_coords(all_datasets, combine_attrs="drop_conflicts")
-        combined_group_name = f"{mesh_name}_multi_dim"
+        combined_group_name = f"{engine_mesh.name}_multi_dim"
 
         logger.info(f"Writing combined dataset to group '{combined_group_name}' in HDF5 file: {output_file}")
         with h5py.File(output_file, "a") as f:
@@ -414,9 +666,9 @@ def process_all_cases_for_one_stl(
                 del f[combined_group_name]
         combined_dataset.to_netcdf(output_file, mode="a", group=combined_group_name, engine="h5netcdf")
         with h5py.File(output_file, "a") as f:
-            f[combined_group_name].attrs["stl_mesh_name"] = mesh_name
+            f[combined_group_name].attrs["stl_mesh_name"] = engine_mesh.name
 
-    logger.debug(f"Successfully wrote all data for {stl_file} to HDF5.")
+    logger.debug(f"Successfully wrote all data for mesh '{engine_mesh.name}' to HDF5.")
 
 
 def run_simulation_batch(settings: SimulationSettings) -> None:
@@ -436,42 +688,81 @@ def run_simulation_batch(settings: SimulationSettings) -> None:
         logger.warning(e)
         return
 
-    if settings.drafts:
-        if len(settings.stl_files) != 1:
-            msg = f"When using --drafts, exactly one base STL file must be provided, but {len(settings.stl_files)} were given."
+    # Determine the base mesh and the origin translation
+    all_mesh_configs = [MeshConfig.model_validate(mc) for mc in settings.stl_files]
+    all_files = [mc.file for mc in all_mesh_configs]
+
+    origin_translation = np.array([0.0, 0.0, 0.0])
+    base_mesh_path: str | None = settings.base_mesh
+    if not base_mesh_path and all_files:
+        base_mesh_path = all_files[0]
+
+    if base_mesh_path:
+        # Load the base mesh geometry once, as it might be needed for origin calculation or saving.
+        base_mesh_trimesh = _prepare_trimesh_geometry(base_mesh_path)
+        base_mesh_name = Path(base_mesh_path).stem
+
+        if settings.base_origin:
+            # If base_origin is specified, it's a point in the local coordinates of the base_mesh.
+            # This point becomes the origin of our world coordinate system.
+            origin_translation = np.array(settings.base_origin)
+            logger.info(f"Using local point {origin_translation} from '{base_mesh_path}' as the world origin.")
+        else:
+            origin_translation = base_mesh_trimesh.center_mass
+            logger.info(f"Database origin (center of mass of base mesh) set to: {origin_translation}")
+
+        # Add the base mesh to the HDF5 database under the 'meshes' group.
+        add_mesh_to_database(output_file, base_mesh_trimesh, base_mesh_name, overwrite=settings.overwrite_meshes)
+
+        # Store the base reference information in the root of the HDF5 file
+        with h5py.File(output_file, "a") as f:
+            f.attrs["base_mesh"] = base_mesh_name
+            if settings.base_origin:
+                f.attrs["base_origin"] = settings.base_origin
+            else:
+                f.attrs["base_origin"] = origin_translation  # Store the calculated CoM as origin
+    else:
+        logger.warning("No base mesh provided.")
+
+    if settings.drafts and base_mesh_path:
+        if len(all_files) != 1:
+            msg = f"When using --drafts, exactly one base STL file must be provided, but {len(all_files)} were given."
             logger.error(msg)
             raise ValueError(msg)
 
-        base_stl_file = settings.stl_files[0]
-        base_mesh_name = Path(base_stl_file).stem
-        logger.info(f"Starting draft generation mode for base mesh: {base_stl_file}")
-
+        base_mesh_name = Path(base_mesh_path).stem
         for draft in settings.drafts:
             logger.info(f"Processing for draft: {draft}")
 
             # Create a copy of the settings to modify for this specific draft
             draft_settings = settings.model_copy(deep=True)
 
-            # Combine the draft with the existing z-translation
-            # A positive draft means sinking the vessel, so we subtract it.
-            draft_settings.translation_z -= draft
-
-            # Ensure other translation settings are also passed through
-            draft_settings.translation_x = settings.translation_x
-            draft_settings.translation_y = settings.translation_y
+            # Create a MeshConfig for this specific draft
+            base_mesh_config = next((mc for mc in all_mesh_configs if mc.file == base_mesh_path), None)
+            draft_translation = base_mesh_config.translation.copy() if base_mesh_config else [0.0, 0.0, 0.0]
+            draft_translation[2] -= draft  # Positive draft means sinking, so subtract from Z
 
             # Create a unique name for this draft-specific mesh configuration
             draft_str = _format_value_for_name(draft)
             mesh_name_for_draft = f"{base_mesh_name}_draft_{draft_str}"
 
+            draft_mesh_config = MeshConfig(file=base_mesh_path, translation=draft_translation)
+
             # Process this specific configuration
-            _process_single_stl(base_stl_file, draft_settings, output_file, mesh_name_override=mesh_name_for_draft)
+            _process_single_stl(
+                draft_mesh_config,
+                draft_settings,
+                output_file,
+                mesh_name_override=mesh_name_for_draft,
+                origin_translation=origin_translation,
+            )
 
     else:
         # Standard mode: process files as they are
         logger.info("Starting standard processing for provided STL files.")
-        for stl_file in settings.stl_files:
-            # In standard mode, also apply the translation settings
-            _process_single_stl(stl_file, settings, output_file, mesh_name_override=None)
+        for mesh_config in all_mesh_configs:
+            _process_single_stl(
+                mesh_config, settings, output_file, mesh_name_override=None, origin_translation=origin_translation
+            )
 
     logger.info(f"✅ Simulation batch finished. Results saved to {output_file}")
