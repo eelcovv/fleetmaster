@@ -96,7 +96,7 @@ def run_fitting_example():
         target_translation=[2.5, -4.2, -draft * 1.2],  # Added dx, dy AND dz
         target_rotation=[23.0, 19.0, 15.0],  # Added yaw AND roll and pitch
         water_level=water_level,
-        expected_match="boxship_t_1_r_20_20_00",
+        expected_match="boxship_t_2_r_00_00_00",
         note="The distance should be larger than both case 1 and case 2.",
     )
 
