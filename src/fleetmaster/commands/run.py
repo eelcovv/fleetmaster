@@ -185,7 +185,7 @@ def _resolve_paths_in_config(config: dict[str, Any], settings_dir: Path) -> None
     if "stl_files" not in config:
         return
 
-    resolved_files = []
+    resolved_files: list[Any] = []
     for item in config["stl_files"]:
         if isinstance(item, str):
             if not Path(item).is_absolute():
