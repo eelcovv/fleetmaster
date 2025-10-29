@@ -7,7 +7,7 @@
    viewBox="0 0 210 297"
    version="1.1"
    id="svg1"
-   sodipodi:docname="coordinate_system.svg"
+   sodipodi:docname="fitting_targets.svg"
    inkscape:version="1.4.2 (ebf0e94, 2025-05-08)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -24,8 +24,8 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      inkscape:zoom="1.4702524"
-     inkscape:cx="365.5835"
-     inkscape:cy="243.83569"
+     inkscape:cx="365.24341"
+     inkscape:cy="243.83568"
      inkscape:window-width="2096"
      inkscape:window-height="1211"
      inkscape:window-x="1223"
@@ -160,6 +160,13 @@
      inkscape:groupmode="layer"
      id="layer1">
     <rect
+       style="fill:#ffffff;stroke-width:0.600001;stroke-dasharray:1.2, 1.2"
+       id="rect2"
+       width="212.35016"
+       height="122.73119"
+       x="-0.5398733"
+       y="-0.5398733" />
+    <rect
        style="fill:none;stroke:#000000;stroke-width:0.365;stroke-dasharray:none;stroke-opacity:1"
        id="rect1"
        width="62.097687"
@@ -270,7 +277,7 @@
        id="text2"><tspan
          sodipodi:role="line"
          id="tspan2"
-         style="stroke-width:0.665"></tspan></text>
+         style="stroke-width:0.665" /></text>
     <path
        style="fill:none;stroke:#000000;stroke-width:0.665001;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#DartArrow)"
        d="M 129.3449,60.092573 157.57618,42.93574"
@@ -588,7 +595,7 @@
        id="text7"><tspan
          sodipodi:role="line"
          id="tspan7"
-         style="stroke-width:0.065"></tspan></text>
+         style="stroke-width:0.065" /></text>
     <g
        id="g13"
        transform="translate(10.43755,-26.273834)">
