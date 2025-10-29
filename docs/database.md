@@ -20,11 +20,43 @@ In addition to the base mesh, the `/meshes` group can contain multiple **candida
 
 The transformation from the base mesh to a candidate mesh is applied in a specific order: first, the rotation is performed around the `cog`, and then the translation is applied. These transformation attributes are stored for each mesh.
 
-In [figure 1](#database), the the relation between the base mesh with the different meshes is shown.
 
 ![Mesh locations as defined in the database structure](images/database.svg){id="database"}
 
+In [figure 1](#database), the the relation between the base mesh with the different meshes is shown.
+The black box represents the base mesh, assumed to be with the keel on the water surface ($z=0$) and with the stern on $x=0$ and $y=0.
+The base mesh can be any stl file respresenting the floating body for which you want to calculate the force response values. 
+The position of the base mesh is arbitrary, so could be positioned anyware. The relation of the base mesh to the real world is established 
+via the base_origin, given by the black vector point from the left bottom corner of the base mesh to the black circle in the middle. 
+Both the base name and origin are stored in the root level of the database. 
+You can relate the base mesh to the real word by connecting the base origin to your real world coordinate system.
+
+Normally, the base mesh it not used to calculate your hydrodynamic data with Capytaine. This is done at your Candidate mesh positions. 
+In [figure 1](#database), these are represented by the green, red and yellow box, labeled candidate mesh 1, 2, and 3, respectively. 
+The relation between the base mesh and the candidate mesh is given by a translation vector, a rotation vector and a cog-vector of the mesh. 
+The cog-vector does not have to correspond to the real geometry cog of your mesh (although this is choosen by default if no vector is given by default).
+Normally it can just be put to 0,0,0 (in the center on the waterline). The cog position is also use to define your rotation about.
+
+In our example, both the red and green mesh are shifted backward such that the cog of the mesh is at (0, 0, 0). The mesh itself is shifted
+downward to establish a draft of your vessel. The rotation for the green and red box is assued to be (0, 0, 0)
+
+The yellow box gives an example of a cadnidate mesh that is shifted  downward  and given a small positive rotation about the y axis. This is stored 
+in the rotation vector belong to the yellow mesh. 
+
+All candidate meshes in the system are stored with a unique name into the hdf5 database under the 'meshes' section. 
+
+Then, we can define Capytaine cases for each of these candidate meshes. On mesh can be connected to multiple cases, but a case can only connect to one mesh. This allow us to define multiple case to a similar graph, such that variations of the forward speed or water depth can be carried out.
+For each case, the solution is stored in a seperate case entry. 
+
+The capytain solutions per case are calculated on a mesh with multiple directions (headings of the waves) and periods (wave frequencies). 
+Each case can have its own definition of direction and periods.
+
+
 ## HDF5 file structure
+
+The structure of the database is given in the diagram below. The root contains the root property base_mesh and base_origin.
+The there are to major chapters: one `meshes` sector (with all the meshes) and one `cases` sector (with all the cases).
+
 
 ```mermaid
 graph TD
