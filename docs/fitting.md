@@ -2,6 +2,8 @@
 
 Fleetmaster provides a powerful mesh fitting capability that allows you to find the best matching mesh from a database of pre-calculated meshes based on a target transformation (translation and rotation). This is particularly useful in scenarios where you have a database of hydrodynamic results for a vessel at various drafts and trim/heel angles, and you want to find the results that best correspond to a new loading condition.
 
+![Fitting targets](images/fitting_targets.svg)
+
 ## How it Works
 
 The core of the fitting functionality is the `find_best_matching_mesh` function. This function takes a target transformation and an HDF5 database file as input and returns the name of the best matching mesh from the database.
