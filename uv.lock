@@ -937,9 +937,6 @@ dev = [
     { name = "tox-uv" },
     { name = "types-pyyaml" },
 ]
-docs = [
-    { name = "mkdocs" },
-]
 pymeshup = [
     { name = "pymeshup" },
 ]
@@ -967,6 +964,7 @@ provides-extras = ["gui"]
 dev = [
     { name = "deptry", specifier = ">=0.22.0" },
     { name = "mkdocs", specifier = ">=1.4.2" },
+    { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=8.5.10" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.26.1" },
     { name = "mypy", specifier = ">=1.18.2" },
@@ -981,7 +979,6 @@ dev = [
     { name = "tox-uv", specifier = ">=1.11.3" },
     { name = "types-pyyaml", specifier = ">=6.0.12.12" },
 ]
-docs = [{ name = "mkdocs", specifier = ">=1.6.1" }]
 pymeshup = [{ name = "pymeshup", specifier = ">=25.10.17" }]
 
 [[package]]
