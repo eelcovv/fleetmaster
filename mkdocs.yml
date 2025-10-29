@@ -10,6 +10,7 @@ copyright: Maintained by <a href="https://usedave.nl/welcome.html">dave lab</a>.
 nav:
   - Home: index.md
   - General: general_description.md
+  - Mesh Fitting: fitting.md
   - Modules: modules.md
 
 plugins:
