@@ -11,16 +11,21 @@ nav:
   - Home: index.md
   - General: general_description.md
   - Modules: modules.md
+
 plugins:
   - search
   - mkdocstrings:
       handlers:
         python:
           paths: ["src/fleetmaster"]
+
 theme:
   name: material
-  feature:
-    tabs: true
+  features:
+    - navigation.tabs
+    - content.code.copy
+    - content.code.annotate
+    - content.code.mermaid
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -51,6 +56,4 @@ markdown_extensions:
       permalink: true
   - pymdownx.arithmatex:
       generic: true
-  - pymdownx.superfences
-  - pymdownx.mermaid:
-      label: ""
+  - pymdownx.superfences # Needed for code blocks such as ```mermaid
