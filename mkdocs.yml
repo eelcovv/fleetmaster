@@ -18,6 +18,9 @@ plugins:
       handlers:
         python:
           paths: ["src/fleetmaster"]
+  - pdf-export:
+      verbose: false
+      media_type: print
 
 theme:
   name: material
