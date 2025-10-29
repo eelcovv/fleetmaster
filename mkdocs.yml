@@ -16,7 +16,7 @@ nav:
 
 plugins:
   - search
-  - caption # captions + nummering onder afbeeldingen
+  - caption
   - mkdocstrings:
       handlers:
         python:
@@ -55,22 +55,20 @@ extra:
       link: https://pypi.org/project/fleetmaster
 
 extra_css:
+  - stylesheets/extra.css
   - https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css
 
 extra_javascript:
   - javascripts/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
-# Laat mkdocs serve óók deze paden volgen (triggert live reload)
+# MkDocs volgt standaard alles onder docs/, maar dit is handig voor mkdocstrings:
 watch:
-  - docs/javascripts
   - src/fleetmaster
 
-# dev_addr: 127.0.0.1:8000  # optioneel: custom host/poort voor mkdocs serve
-
 markdown_extensions:
-  - attr_list # Nodig voor {id="..."} achter je afbeelding
-  - md_in_html # Sta HTML in Markdown toe (bv. <figure>)
+  - attr_list # needed for {id=""} behind image
+  - md_in_html # allows html in markdown
   - toc:
       permalink: true
   - admonition

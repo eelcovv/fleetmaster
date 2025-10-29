@@ -14,11 +14,9 @@ The general idea is that you make one version of your mesh which is stored as th
 Typically you base mesh is located with the keel at the water level (which is $z=0$ by default) and the stern at $x=0$.
 
 In [figure 1](#database) the the relation between the base mesh with the different meshes is shown.
-A Base Mesh is defined by the stl file name which needs to be supplied, plus a `base_origin` and `base_rotation`.
+A Base Mesh is defined by the stl file name which needs to be supplied.
 
 ![Mesh locations as defined in the database structure](images/database.svg){id="database"}
-
-This gives the origin of the mesh back.
 
 ## Description of the database
 
