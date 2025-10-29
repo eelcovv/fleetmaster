@@ -12,6 +12,12 @@ The main goal of `fleetmaster` is to automate the execution of multiple hydrodyn
 - **Batch Engine**: The core engine of `fleetmaster` reads the settings file, prepares each individual Capytaine simulation, runs it, and stores the results.
 - **Command-Line Interface (CLI)**: All operations are handled through the `fleetmaster` command. This allows for easy integration into scripts and automated workflows.
 
+## Mesh Fitting
+
+In addition to running batch simulations, `fleetmaster` also provides a powerful mesh fitting capability. This feature allows you to find the best matching mesh from a database of pre-calculated meshes based on a target transformation (translation and rotation). This is particularly useful for finding the most relevant hydrodynamic data for a specific loading condition without running a new simulation.
+
+For more details, see the [Mesh Fitting](./fitting.md) documentation.
+
 ## Typical Workflow
 
 A typical workflow for using `fleetmaster` involves the following steps:
