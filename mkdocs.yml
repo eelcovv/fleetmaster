@@ -16,6 +16,7 @@ nav:
 
 plugins:
   - search
+  - caption # captions + nummering onder afbeeldingen
   - mkdocstrings:
       handlers:
         python:
@@ -56,17 +57,24 @@ extra:
 extra_css:
   - https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css
 
-#extra_javascript:
-#  - https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js
-#  - https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js
-#  - javascripts/katex.js
 extra_javascript:
   - javascripts/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
+# Laat mkdocs serve óók deze paden volgen (triggert live reload)
+watch:
+  - docs/javascripts
+  - src/fleetmaster
+
+# dev_addr: 127.0.0.1:8000  # optioneel: custom host/poort voor mkdocs serve
+
 markdown_extensions:
+  - attr_list # Nodig voor {id="..."} achter je afbeelding
+  - md_in_html # Sta HTML in Markdown toe (bv. <figure>)
   - toc:
       permalink: true
+  - admonition
+  - pymdownx.details
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.superfences:
