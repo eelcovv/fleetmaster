@@ -14,12 +14,12 @@ The general idea is that you make one version of your mesh. Normally this would 
 Typically you base mesh is located with the keel at the water level (which is $z=0$ by default) and the stern at $x=0$.
 
 The figure below show the relation between the base mesh with the different meshes.
-A basemesh is defined by the stl file name which needs to be supplied, plus a `base_origin` and
+A basemesh is defined by the stl file name which needs to be supplied, plus a `base_origin` and `base_rotation`.
+
+![Database structure](images/database.svg)
 
 ## Description of the database
 
 The `Base mesh` is used as a reference. There are several `Candidate meshes` relative to the base mesh, each with its own defined center of gravity (cog). This cog can be independent of the actual geometric center of gravity; it is the cog used by Capytaine. By default, it is the center of the geometry at the water surface, so (0,0,0).
-
-![Database structure](images/database.svg)
 
 ## HDF5 file structure
