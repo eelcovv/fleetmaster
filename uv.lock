@@ -936,6 +936,9 @@ dev = [
     { name = "tox-uv" },
     { name = "types-pyyaml" },
 ]
+docs = [
+    { name = "mkdocs" },
+]
 pymeshup = [
     { name = "pymeshup" },
 ]
@@ -976,6 +979,7 @@ dev = [
     { name = "tox-uv", specifier = ">=1.11.3" },
     { name = "types-pyyaml", specifier = ">=6.0.12.12" },
 ]
+docs = [{ name = "mkdocs", specifier = ">=1.6.1" }]
 pymeshup = [{ name = "pymeshup", specifier = ">=25.10.17" }]
 
 [[package]]

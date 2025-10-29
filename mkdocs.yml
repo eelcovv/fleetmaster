@@ -9,6 +9,7 @@ copyright: Maintained by <a href="https://usedave.nl/welcome.html">dave lab</a>.
 
 nav:
   - Home: index.md
+  - General: general_description.md
   - Modules: modules.md
 plugins:
   - search
@@ -50,3 +51,6 @@ markdown_extensions:
       permalink: true
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.superfences
+  - pymdownx.mermaid:
+      label: ""
