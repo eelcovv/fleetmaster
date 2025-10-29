@@ -6,11 +6,15 @@
 
 ## Core Concepts
 
-The main goal of `fleetmaster` is to automate the execution of multiple hydrodynamic simulations. This is achieved through a few core concepts:
+The main goal of `fleetmaster` is to automate the execution of multiple hydrodynamic simulations using Capytaine. This is achieved through a few core concepts:
 
 - **Settings File**: The user defines a batch of simulations using a YAML settings file. This file specifies the mesh files, water depth, wave directions, and other parameters for each case to be run.
-- **Batch Engine**: The core engine of `fleetmaster` reads the settings file, prepares each individual Capytaine simulation, runs it, and stores the results.
+- **Batch Engine**: The core engine of `fleetmaster` reads the settings file, prepares each individual Capytaine simulation, runs it, and stores the results to an hdf5-database.
 - **Command-Line Interface (CLI)**: All operations are handled through the `fleetmaster` command. This allows for easy integration into scripts and automated workflows.
+
+## Solution Database
+
+The soluation for each mesh and simulation settings are stored in a database. The database supsquently can be used by external programs to quickly access each Capytaine solution. For more details on the database, see [Database](./database.md).
 
 ## Mesh Fitting
 
